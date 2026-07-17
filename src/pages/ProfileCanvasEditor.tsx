@@ -102,9 +102,11 @@ import type {
 } from "../lib/api";
 import type { ProfileCanvasDraftAutosaveState } from "./ProfilePage";
 import {
-  formatUploadSize,
   ProfileAppearanceControls,
   ProfileCanvasBackgroundControls,
+} from "./ProfilePage";
+import {
+  formatUploadSize,
   profileCanvasAutofillConfigForModule,
   profileCanvasCells,
   profileCanvasClampLayout,
@@ -137,7 +139,7 @@ import {
   useProfileCanvasEditorGridProjection,
   validateProfileModuleAudioFile,
   validateProfileModuleVideoFile,
-} from "./ProfilePage";
+} from "../lib/profileCanvasEditorHelpers";
 
 type ProfileDirectCanvasEditorProps = {
   autosaveError?: string | undefined;

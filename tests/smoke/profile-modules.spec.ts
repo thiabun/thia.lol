@@ -4617,7 +4617,7 @@ test("YouTube module settings prompt for provider connection", async ({ page }) 
   await expect
     .poll(() => oauthStartPayload?.redirectPath)
     .toBe("/@thia?editCanvas=1");
-  expect(readFileSync("src/pages/ProfilePage.tsx", "utf8")).toContain(
+  expect(readFileSync("src/lib/profileCanvasEditorHelpers.ts", "utf8")).toContain(
     'if (type.startsWith("youtube_"))',
   );
 });
@@ -7760,6 +7760,10 @@ test("profile module registry and Node storage guardrails are present by inspect
   const uploads = readFileSync("server/src/uploads.ts", "utf8");
   const serverEnv = readFileSync("server/env.example", "utf8");
   const moduleRegistry = readFileSync("src/lib/profileModuleRegistry.ts", "utf8");
+  const profileCanvasHelpers = readFileSync(
+    "src/lib/profileCanvasEditorHelpers.ts",
+    "utf8",
+  );
   const profilePage = readFileSync("src/pages/ProfilePage.tsx", "utf8");
   const profileCanvasEditor = readFileSync("src/pages/ProfileCanvasEditor.tsx", "utf8");
   const profileGrid = readFileSync("src/components/social/ProfileGrid.tsx", "utf8");
@@ -7819,7 +7823,9 @@ test("profile module registry and Node storage guardrails are present by inspect
   expect(moduleRegistry).toContain('description: "A playlist from Spotify, YouTube, Apple Music, or uploads."');
   expect(profileCanvasEditor).toContain('music: "Music module"');
   expect(profileCanvasEditor).toContain('music_playlist: "Playlist module"');
-  expect(profilePage).toContain('platform: "custom", sourceMode: "upload"');
+  expect(profileCanvasHelpers).toContain(
+    'platform: "custom", sourceMode: "upload"',
+  );
   expect(uploads).toContain('"profile_module_video"');
   expect(uploads).toContain('"profile_music"');
   expect(uploads).toContain("Unsupported audio type. Use MP3, M4A, AAC, WAV, FLAC, or OGG.");
