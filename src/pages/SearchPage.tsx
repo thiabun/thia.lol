@@ -1,4 +1,4 @@
-import { Compass, Radio, Search, SearchX } from "lucide-react";
+import { Compass, MessageCircle, Radio, Search, SearchX } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -29,7 +29,9 @@ export function SearchPage() {
   const loading = loadingQuery === trimmedQuery;
   const profileResults = activeResults?.results.profiles ?? [];
   const roomResults = activeResults?.results.rooms ?? [];
-  const hasResults = profileResults.length > 0 || roomResults.length > 0;
+  const postResults = activeResults?.results.posts ?? [];
+  const hasResults =
+    profileResults.length > 0 || roomResults.length > 0 || postResults.length > 0;
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams);
@@ -98,11 +100,11 @@ export function SearchPage() {
       return "";
     }
 
-    const count = profileResults.length + roomResults.length;
+    const count = profileResults.length + roomResults.length + postResults.length;
     const label = count === 1 ? "result" : "results";
 
     return `${count} ${label}`;
-  }, [activeResults, hasResults, profileResults.length, roomResults.length]);
+  }, [activeResults, hasResults, postResults.length, profileResults.length, roomResults.length]);
 
   return (
     <motion.div
@@ -114,7 +116,7 @@ export function SearchPage() {
     >
       <PageMeta
         title="Search"
-        description="Search public profiles and rooms on thia.lol."
+        description="Search public profiles, rooms, and posts on thia.lol."
         path="/search"
       />
 
@@ -125,7 +127,7 @@ export function SearchPage() {
         <SearchField
           id="site-search"
           label="Search thia.lol"
-          placeholder="Profiles and rooms"
+          placeholder="Profiles, rooms, and posts"
           value={query}
           autoComplete="off"
           autoFocus
@@ -140,7 +142,7 @@ export function SearchPage() {
       {!trimmedQuery ? (
         <EmptyState
           icon={Search}
-          title="Search profiles and rooms"
+          title="Search thia.lol"
           text="Type a handle, name, room, or topic."
           actions={
             <div className="flex flex-wrap justify-center gap-2">
@@ -169,7 +171,7 @@ export function SearchPage() {
         <ApiStateNotice
           kind="loading"
           title="Searching"
-          text="Searching profiles and rooms."
+          text="Searching profiles, rooms, and posts."
         />
       ) : null}
 
@@ -209,6 +211,15 @@ export function SearchPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 {roomResults.map((room) => (
                   <RoomResult key={room.slug} room={room} />
+                ))}
+              </div>
+            </ResultGroup>
+          ) : null}
+          {postResults.length > 0 ? (
+            <ResultGroup title="Posts" count={postResults.length}>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {postResults.map((post) => (
+                  <PostResult key={post.id} post={post} />
                 ))}
               </div>
             </ResultGroup>
@@ -290,6 +301,41 @@ function RoomResult({ room }: { room: Room }) {
                 {room.description || room.summary}
               </p>
             ) : null}
+          </div>
+        </div>
+      </Panel>
+    </Link>
+  );
+}
+
+function PostResult({
+  post,
+}: {
+  post: SearchResults["results"]["posts"][number];
+}) {
+  return (
+    <Link
+      to={post.canonicalPath}
+      className="block rounded-panel focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      data-testid="search-post-result"
+    >
+      <Panel interactive className="h-full p-3">
+        <div className="flex gap-3">
+          <Avatar user={post.author} size="sm" />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-1.5 text-sm">
+              <h3 className="truncate font-semibold text-text">
+                {post.author.displayName}
+              </h3>
+              <span className="truncate text-muted">@{post.author.handle}</span>
+            </div>
+            <p className="mt-1.5 line-clamp-2 text-sm leading-5 text-muted">
+              {post.bodySnippet}
+            </p>
+            <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted">
+              <MessageCircle aria-hidden="true" size={13} />
+              {post.room ? `in ${post.room.name}` : "Profile post"}
+            </p>
           </div>
         </div>
       </Panel>

@@ -22,7 +22,7 @@ export const quickEase: Transition = {
 };
 
 export const pageEntrance: Variants = {
-  hidden: { opacity: 0, y: 10 },
+  hidden: { opacity: 1, y: 4 },
   show: { opacity: 1, y: 0, transition: softSpring },
 };
 

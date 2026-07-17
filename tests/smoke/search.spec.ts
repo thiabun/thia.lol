@@ -19,7 +19,7 @@ test("/search shows the too-short query state", async ({ page }) => {
   await expect(page.getByText("Keep typing")).toHaveCount(0);
 });
 
-test("/search shows successful profile and room results", async ({ page }) => {
+test("/search shows successful profile, room, and post results", async ({ page }) => {
   await mockShellRequests(page);
   await mockSearch(page, {
     ok: true,
@@ -66,25 +66,46 @@ test("/search shows successful profile and room results", async ({ page }) => {
             updatedAt: "2026-06-10 00:00:00",
           },
         ],
+        posts: [
+          {
+            id: 9,
+            publicId: "pabcdef12345",
+            canonicalPath: "/@thia/posts/pabcdef12345",
+            bodySnippet: "A searchable post about tiny social spaces.",
+            createdAt: "2026-07-17 12:00:00",
+            author: {
+              id: 1,
+              handle: "thia",
+              displayName: "Thia",
+              initials: "T",
+              aura: "frost",
+              avatarUrl: null,
+            },
+            room: { name: "General", slug: "general" },
+          },
+        ],
       },
     },
   });
 
   await page.goto("/search?q=thi");
 
-  await expect(page.getByText("2 results")).toBeVisible();
+  await expect(page.getByText("3 results")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Profiles" })).toBeVisible();
   await expect(page.getByTestId("search-profile-result")).toHaveCount(1);
-  await expect(page.getByRole("link", { name: /Thia @thia/ })).toHaveAttribute(
-    "href",
-    "/@thia",
-  );
+  await expect(page.getByTestId("search-profile-result")).toHaveAttribute("href", "/@thia");
   await expect(page.getByRole("heading", { name: "Rooms" })).toBeVisible();
   await expect(page.getByTestId("search-room-result")).toHaveCount(1);
   await expect(page.getByRole("link", { name: /General \/general/ })).toHaveAttribute(
     "href",
     "/rooms/general",
   );
+  await expect(page.getByRole("heading", { name: "Posts" })).toBeVisible();
+  await expect(page.getByTestId("search-post-result")).toHaveAttribute(
+    "href",
+    "/@thia/posts/pabcdef12345",
+  );
+  await expect(page.getByText("A searchable post about tiny social spaces.")).toBeVisible();
 });
 
 test("/search keeps typing local without reopening the full page loader", async ({

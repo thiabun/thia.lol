@@ -50,7 +50,7 @@ test("Anonymous home explains the product and renders real starter communities",
       }),
     }),
   );
-  await page.route("**/api/feed/discover", (route) =>
+  await page.route("**/api/feed/discover**", (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -63,7 +63,35 @@ test("Anonymous home explains the product and renders real starter communities",
             makePost({ id: 44, body: "Fourth public note." }),
             makePost({ id: 45, body: "Fifth public note." }),
           ],
-          activeRooms: [makeDiscoverRoom({ name: "Garden", slug: "garden" })],
+          activeRooms: [
+            makeDiscoverRoom({
+              id: 3,
+              name: "Cozy Games",
+              slug: "cozy-games",
+              memberCount: 8,
+              postCount: 5,
+            }),
+            makeDiscoverRoom({
+              id: 9,
+              name: "Garden",
+              slug: "garden",
+              memberCount: 5,
+            }),
+            makeDiscoverRoom({
+              id: 1,
+              name: "Start Here",
+              slug: "start-here",
+              memberCount: 12,
+              postCount: 3,
+            }),
+            makeDiscoverRoom({
+              id: 2,
+              name: "Show Your Work",
+              slug: "show-your-work",
+              memberCount: 7,
+              postCount: 4,
+            }),
+          ],
           peopleToWatch: [
             makeDiscoverPerson({ handle: "alex", displayName: "Alex" }),
           ],
@@ -211,12 +239,20 @@ test("Anonymous home replaces unavailable starter rooms with active public rooms
       }),
     }),
   );
-  await page.route("**/api/feed/discover", (route) =>
+  await page.route("**/api/feed/discover**", (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
-        data: { posts: [], activeRooms: [], peopleToWatch: [] },
+        data: {
+          posts: [],
+          activeRooms: [
+            makeDiscoverRoom({ id: 8, name: "Active Artists", slug: "active-artists" }),
+            makeDiscoverRoom({ id: 9, name: "Tiny Web", slug: "tiny-web" }),
+            makeDiscoverRoom({ id: 10, name: "Garden", slug: "garden" }),
+          ],
+          peopleToWatch: [],
+        },
       }),
     }),
   );
@@ -237,7 +273,7 @@ test("Anonymous home renders honest empty states for rooms and public posts", as
   page,
 }) => {
   await mockCommonApi(page);
-  await page.route("**/api/feed/discover", (route) =>
+  await page.route("**/api/feed/discover**", (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -263,17 +299,15 @@ test("Anonymous home renders honest empty states for rooms and public posts", as
   await expect(page.getByText("No public posts.")).toBeVisible();
 });
 
-test("Anonymous home keeps rooms and activity failures separate", async ({ page }) => {
+test("Anonymous home keeps rooms and activity failure states clear", async ({ page }) => {
   await mockCommonApi(page);
-  for (const path of ["rooms", "feed/discover", "feed/home"]) {
-    await page.route(`**/api/${path}`, (route) =>
-      route.fulfill({
-        status: 500,
-        contentType: "application/json",
-        body: JSON.stringify({ ok: false, error: "Temporary failure." }),
-      }),
-    );
-  }
+  await page.route("**/api/feed/discover**", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Temporary failure." }),
+    }),
+  );
 
   await page.goto("/");
 
@@ -941,7 +975,7 @@ test("Discover renders primary sections only when backed by data", async ({
   await expect(page.getByText("2 stars")).toBeVisible();
 });
 
-test("Discover keeps context sections stacked on mobile", async ({ page }) => {
+test("Discover puts compact context before the paginated feed on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 760 });
   await mockCommonApi(page);
   await page.route("**/api/feed/discover", (route) =>
@@ -960,20 +994,96 @@ test("Discover keeps context sections stacked on mobile", async ({ page }) => {
 
   await page.goto("/discover");
 
+  const highlightsBox = await page.getByTestId("discover-mobile-highlights").boundingBox();
   const risingBox = await page.getByTestId("discover-rising-feed").boundingBox();
-  const roomsBox = await page.getByTestId("discover-rooms-rail").boundingBox();
-  const peopleBox = await page.getByTestId("discover-people-rail").boundingBox();
 
+  expect(highlightsBox).not.toBeNull();
   expect(risingBox).not.toBeNull();
-  expect(roomsBox).not.toBeNull();
-  expect(peopleBox).not.toBeNull();
-  expect(risingBox!.y).toBeLessThan(roomsBox!.y);
-  expect(roomsBox!.y).toBeLessThan(peopleBox!.y);
+  expect(highlightsBox!.y).toBeLessThan(risingBox!.y);
+  await expect(page.getByTestId("discover-rooms-rail")).toBeHidden();
+  await expect(page.getByTestId("discover-people-rail")).toBeHidden();
 
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
   );
   expect(hasHorizontalOverflow).toBe(false);
+});
+
+test("Discover keeps scrolling by loading and deduplicating the next feed page", async ({
+  page,
+}) => {
+  await mockCommonApi(page);
+  const cursors: Array<string | null> = [];
+
+  await page.route("**/api/feed/discover**", (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    cursors.push(cursor);
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data:
+          cursor === "12"
+            ? {
+                posts: [
+                  makePost({ id: 42, body: "First page post." }),
+                  makePost({ id: 43, body: "Loaded while scrolling." }),
+                ],
+                activeRooms: [],
+                peopleToWatch: [],
+                nextCursor: null,
+              }
+            : {
+                posts: [makePost({ id: 42, body: "First page post." })],
+                activeRooms: [makeDiscoverRoom()],
+                peopleToWatch: [makeDiscoverPerson()],
+                nextCursor: "12",
+              },
+      }),
+    });
+  });
+
+  await page.goto("/discover");
+
+  await expect(page.getByText("Loaded while scrolling.")).toBeVisible();
+  await expect(page.getByTestId("discover-rising-feed").getByTestId("post-card-open-thread")).toHaveCount(2);
+  expect(cursors).toContain("12");
+});
+
+test("Home keeps scrolling by loading the next ranked feed page", async ({ page }) => {
+  await mockAuthenticatedApi(page);
+  const cursors: Array<string | null> = [];
+
+  await page.route("**/api/feed/home**", (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    cursors.push(cursor);
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data:
+          cursor === "12"
+            ? {
+                posts: [makePost({ id: 44, body: "More from Home." })],
+                personalized: true,
+                nextCursor: null,
+              }
+            : {
+                posts: [makePost({ id: 42, body: "Home starts here." })],
+                personalized: true,
+                nextCursor: "12",
+              },
+      }),
+    });
+  });
+
+  await page.goto("/");
+
+  await expect(page.getByText("More from Home.")).toBeVisible();
+  await expect(page.getByLabel("Home feed").getByTestId("post-card-open-thread")).toHaveCount(2);
+  expect(cursors).toContain("12");
 });
 
 test("Discover uses desktop side rails around the rising feed", async ({ page }) => {

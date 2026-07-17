@@ -183,6 +183,7 @@ const searchPayload: SearchPayload = {
       },
     ],
     rooms: [room],
+    posts: [],
   },
 };
 
@@ -407,10 +408,14 @@ function postsRepositoryMock(overrides: Partial<PostsRepository> = {}): PostsRep
     listProfileReplies: vi.fn().mockResolvedValue([post]),
     listProfileReblogs: vi.fn().mockResolvedValue([post]),
     getHomeFeed: vi.fn().mockResolvedValue({
+      nextCursor: null,
       posts: [post],
       personalized: false,
     } satisfies HomeFeedPayload),
-    listDiscoverPosts: vi.fn().mockResolvedValue([post]),
+    listDiscoverPosts: vi.fn().mockResolvedValue({
+      nextCursor: null,
+      posts: [post],
+    }),
     listPeopleToWatch: vi.fn().mockResolvedValue([personToWatch]),
     ...overrides,
   };
@@ -1145,6 +1150,7 @@ function editorRepositoryMock(overrides: Partial<EditorRepository> = {}): Editor
 function authRepositoryMock(overrides: Partial<AuthRepository> = {}): AuthRepository {
   return {
     login: vi.fn().mockResolvedValue(authSessionResult),
+    checkHandleAvailability: vi.fn().mockResolvedValue({ available: true, handle: "new_user" }),
     register: vi.fn().mockResolvedValue(authSessionResult),
     logout: vi.fn().mockResolvedValue(authLogoutResult),
     verifyTwoFactor: vi.fn().mockResolvedValue(authSessionResult),
@@ -2342,6 +2348,28 @@ describe("Node API auth preview mutation routes", () => {
     expect(response.json()).toEqual({
       ok: true,
       data: authPayload,
+    });
+  });
+
+  it("checks handle availability against the auth repository", async () => {
+    const repository = authRepositoryMock({
+      checkHandleAvailability: vi.fn().mockResolvedValue({
+        available: false,
+        handle: "thia",
+      }),
+    });
+    const app = buildApp({ authRepository: repository });
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/handle-availability",
+      payload: { handle: "@Thia" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.checkHandleAvailability).toHaveBeenCalledWith({ handle: "@Thia" });
+    expect(response.json()).toEqual({
+      ok: true,
+      data: { available: false, handle: "thia" },
     });
   });
 
@@ -4329,6 +4357,7 @@ describe("Node API post and feed preview routes", () => {
     expect(home.json()).toEqual({
       ok: true,
       data: {
+        nextCursor: null,
         posts: [post],
         personalized: false,
       },
@@ -4340,6 +4369,52 @@ describe("Node API post and feed preview routes", () => {
         posts: [post],
         activeRooms: [room],
         peopleToWatch: [personToWatch],
+        nextCursor: null,
+      },
+    });
+
+    expect(postsRepository.getHomeFeed).toHaveBeenCalledWith(null, {
+      limit: 12,
+      offset: 0,
+    });
+    expect(postsRepository.listDiscoverPosts).toHaveBeenCalledWith(null, {
+      limit: 12,
+      offset: 0,
+    });
+  });
+
+  it("paginates feeds and keeps landing context compact", async () => {
+    const postsRepository = postsRepositoryMock({
+      listDiscoverPosts: vi.fn().mockResolvedValue({
+        nextCursor: "24",
+        posts: [post],
+      }),
+    });
+    const roomsRepository = roomsRepositoryMock();
+    const app = buildApp({ postsRepository, roomsRepository });
+    const nextPage = await app.inject({
+      method: "GET",
+      url: "/feed/discover?cursor=12&limit=12",
+    });
+    const landing = await app.inject({
+      method: "GET",
+      url: "/feed/discover?view=landing",
+    });
+
+    expect(nextPage.statusCode).toBe(200);
+    expect(postsRepository.listDiscoverPosts).toHaveBeenNthCalledWith(1, null, {
+      limit: 12,
+      offset: 12,
+    });
+    expect(roomsRepository.listPublicRooms).toHaveBeenCalledTimes(1);
+    expect(postsRepository.listPeopleToWatch).not.toHaveBeenCalled();
+    expect(landing.json()).toEqual({
+      ok: true,
+      data: {
+        posts: [post],
+        activeRooms: [room],
+        peopleToWatch: [],
+        nextCursor: null,
       },
     });
   });
@@ -4362,7 +4437,10 @@ describe("Node API post and feed preview routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(postsRepository.listDiscoverPosts).toHaveBeenCalledWith(42);
+    expect(postsRepository.listDiscoverPosts).toHaveBeenCalledWith(42, {
+      limit: 12,
+      offset: 0,
+    });
     expect(postsRepository.listPeopleToWatch).toHaveBeenCalledWith(42);
     expect(roomsRepository.listPublicRooms).toHaveBeenCalledWith({
       role: "member",

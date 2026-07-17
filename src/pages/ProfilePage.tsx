@@ -5934,7 +5934,7 @@ function ProfileInfoStats({
               type="button"
               className={cn(
                 className,
-                "hover:text-text focus-visible:outline-2 focus-visible:outline-focus",
+                "app-control min-h-11 hover:text-text focus-visible:outline-2 focus-visible:outline-focus",
               )}
               data-profile-info-stat={stat.label}
               onClick={() => onOpenPanel(panel)}

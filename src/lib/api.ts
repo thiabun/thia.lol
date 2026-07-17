@@ -166,11 +166,13 @@ type ApiShareRoomToMessagesResult = Omit<ShareRoomToMessagesResult, "room"> & {
 };
 
 type ApiHomeFeed = {
+  nextCursor?: string | null;
   posts: ApiPost[];
   personalized: boolean;
 };
 
 type ApiDiscoverFeed = {
+  nextCursor?: string | null;
   posts: ApiPost[];
   activeRooms: ApiRoom[];
   peopleToWatch: DiscoverPerson[];
@@ -180,6 +182,7 @@ type ApiSearchResults = Omit<SearchResults, "results"> & {
   results: {
     profiles: SearchResults["results"]["profiles"];
     rooms: ApiRoom[];
+    posts?: SearchResults["results"]["posts"];
   };
 };
 
@@ -923,19 +926,39 @@ export type AdminActionInput = {
   notes?: string;
 };
 
-export function getHomeFeed(): Promise<HomeFeed> {
-  return apiGet<ApiHomeFeed>("/feed/home").then((feed) => ({
+export function getHomeFeed(cursor?: string): Promise<HomeFeed> {
+  return apiGet<ApiHomeFeed>(feedPagePath("/feed/home", cursor)).then((feed) => ({
+    nextCursor: typeof feed.nextCursor === "string" ? feed.nextCursor : null,
     posts: feed.posts.filter(isVisiblePost).map(normalizePost),
     personalized: feed.personalized,
   }));
 }
 
-export function getDiscoverFeed(): Promise<DiscoverFeed> {
-  return apiGet<ApiDiscoverFeed>("/feed/discover").then((feed) => ({
+export function getDiscoverFeed(cursor?: string): Promise<DiscoverFeed> {
+  return getDiscoverFeedAtPath(feedPagePath("/feed/discover", cursor));
+}
+
+export function getLandingFeed(): Promise<DiscoverFeed> {
+  return getDiscoverFeedAtPath("/feed/discover?view=landing");
+}
+
+function getDiscoverFeedAtPath(path: string): Promise<DiscoverFeed> {
+  return apiGet<ApiDiscoverFeed>(path).then((feed) => ({
+    nextCursor: typeof feed.nextCursor === "string" ? feed.nextCursor : null,
     posts: feed.posts.filter(isVisiblePost).map(normalizePost),
     activeRooms: feed.activeRooms.filter(isVisibleRoom).map(normalizeRoom),
     peopleToWatch: feed.peopleToWatch.map(normalizeDiscoverPerson),
   }));
+}
+
+function feedPagePath(path: string, cursor?: string): string {
+  if (!cursor) {
+    return path;
+  }
+
+  const params = new URLSearchParams({ cursor });
+
+  return `${path}?${params.toString()}`;
 }
 
 export function getRooms(): Promise<Room[]> {
@@ -961,8 +984,18 @@ export function getSearchResults(query: string): Promise<SearchResults> {
     results: {
       profiles: result.results.profiles,
       rooms: result.results.rooms.filter(isVisibleRoom).map(normalizeRoom),
+      posts: result.results.posts ?? [],
     },
   }));
+}
+
+export function getHandleAvailability(
+  handle: string,
+): Promise<{ available: boolean; handle: string }> {
+  return apiPost<{ available: boolean; handle: string }>(
+    "/auth/handle-availability",
+    { handle },
+  );
 }
 
 export function getRoom(idOrSlug: string): Promise<Room | undefined> {

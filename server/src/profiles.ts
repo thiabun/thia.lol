@@ -1825,6 +1825,7 @@ export function postSelectSql(
   viewerUserId: number | null = null,
   extraJoins = "",
   visibilitySqlOverride: string | null = null,
+  limitClause = "LIMIT 50",
 ): string {
   const viewerSql = viewerUserId === null ? "NULL" : String(viewerUserId);
   const followSelect = capabilities.hasUserFollows
@@ -2030,7 +2031,7 @@ export function postSelectSql(
       ${profileAuthorVisibilitySql("u", "pr", capabilities, viewerUserId)}
       ${whereClause}
     ORDER BY ${orderClause}
-    LIMIT 50`;
+    ${limitClause}`;
 }
 
 export function postPayloadFromRow(

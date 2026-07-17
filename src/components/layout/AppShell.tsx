@@ -89,6 +89,7 @@ const supportUrl = "https://ko-fi.com/thiabun";
 const cookieNoticeStorageKey = "thia_cookie_notice_ack";
 const whatsNewAutoOpenDelayMs = 600;
 const whatsNewAutoOpenPaths = new Set(["/", "/discover", "/rooms", "/search"]);
+const focusedShellPaths = new Set(["/login", "/register", "/onboarding"]);
 type ShellOverlay = "coffee" | "composer" | "stroke-joke" | "whats-new" | null;
 type OpenWhatsNew = (returnFocusTo?: HTMLElement | null) => void;
 type WhatsNewAudienceId = number | "anonymous";
@@ -213,6 +214,10 @@ export function AppShell() {
     hasSeenCurrentWhatsNewRelease(user?.id);
   const postingDisabled = status === "loading";
   const anonymousHome = status === "anonymous" && location.pathname === "/";
+  const focusedShellRoute = focusedShellPaths.has(
+    location.pathname.replace(/\/+$/, "").toLowerCase() || "/",
+  );
+  const mobileShellControlsHidden = mobileDockHidden || focusedShellRoute;
   const currentRoomSlug = matchPath(
     { path: "/rooms/:slug", end: true },
     location.pathname,
@@ -610,6 +615,12 @@ export function AppShell() {
         <div className="fixed inset-0 z-0 bg-page-wash" />
       )}
       <div className="relative z-10 flex min-h-dvh min-w-0 max-w-full flex-col">
+        <a
+          href="#main-content"
+          className="fixed left-3 top-3 z-[70] -translate-y-24 rounded-control bg-text px-3 py-2 text-sm font-semibold text-canvas shadow-lift transition focus:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        >
+          Skip to content
+        </a>
         <SiteHeader
           anonymousHome={anonymousHome}
           navItems={publicNavItems}
@@ -627,9 +638,11 @@ export function AppShell() {
         />
         <div className="mx-auto flex min-w-0 w-full max-w-7xl flex-1 flex-col px-3 sm:px-5 lg:px-7">
           <main
+            id="main-content"
+            tabIndex={-1}
             className={cn(
               "min-w-0 flex-1 pt-3 lg:pb-10 lg:pt-4",
-              mobileDockHidden || anonymousHome
+              mobileShellControlsHidden || anonymousHome
                 ? "pb-0"
                 : "pb-[var(--app-mobile-content-bottom)]",
             )}
@@ -646,7 +659,7 @@ export function AppShell() {
               />
             </div>
           </main>
-          {anonymousHome ? null : (
+          {anonymousHome || focusedShellRoute ? null : (
             <MobileDock
               hidden={mobileDockHidden}
               navItems={publicNavItems}
@@ -656,7 +669,7 @@ export function AppShell() {
           )}
         </div>
         <SiteFooter onWhatsNewOpen={openWhatsNew} />
-        {anonymousHome ? null : (
+        {anonymousHome || focusedShellRoute ? null : (
           <Button
             type="button"
             className="fixed bottom-6 right-6 z-40 hidden min-h-12 rounded-full px-5 text-base font-semibold shadow-lift ring-2 ring-accent/25 lg:inline-flex"
@@ -670,7 +683,7 @@ export function AppShell() {
         )}
         {anonymousHome ? null : (
           <CoffeeSupport
-            mobileHidden={mobileDockHidden}
+            mobileHidden={mobileShellControlsHidden}
             onOpenChange={handleCoffeeSupportOpenChange}
             open={coffeeSupportOpen}
           />
@@ -1040,6 +1053,7 @@ function AccountMenu({ onWhatsNewOpen }: { onWhatsNewOpen: OpenWhatsNew }) {
         type="button"
         variant="secondary"
         size="icon"
+        className="size-11"
         data-account-menu-trigger="true"
         aria-label={label}
         aria-expanded={open}
@@ -1149,7 +1163,7 @@ function AccountMenu({ onWhatsNewOpen }: { onWhatsNewOpen: OpenWhatsNew }) {
 }
 
 const accountMenuItemClass =
-  "flex min-h-9 w-full items-center gap-2 rounded-card px-2.5 text-left text-sm font-medium text-muted transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
+  "app-control flex min-h-11 w-full items-center gap-2 rounded-card px-2.5 text-left text-sm font-medium text-muted transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 
 function AccountMenuItem({
   children,

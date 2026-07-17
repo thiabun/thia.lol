@@ -433,6 +433,10 @@ test("profile layout renders identity, essential social stats, activity module, 
   await expect(socialContext.getByText("Badges")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /1 Followers/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /1 Following/ })).toBeVisible();
+  const socialButtonHeights = await socialContext.locator("button").evaluateAll((buttons) =>
+    buttons.map((button) => (button as HTMLElement).offsetHeight),
+  );
+  expect(Math.min(...socialButtonHeights)).toBeGreaterThanOrEqual(44);
   await expect(page.getByText("1 Moots")).toHaveCount(0);
 
   await expect(page.getByTestId("profile-grid-module-activity")).toBeVisible();

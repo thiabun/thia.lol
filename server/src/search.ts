@@ -12,7 +12,18 @@ export interface SearchPayload {
   results: {
     profiles: SearchProfilePayload[];
     rooms: RoomPayload[];
+    posts: SearchPostPayload[];
   };
+}
+
+export interface SearchPostPayload {
+  id: number;
+  publicId: string;
+  canonicalPath: string;
+  bodySnippet: string;
+  createdAt: string | null;
+  author: UserPayload;
+  room: { name: string; slug: string } | null;
 }
 
 export interface SearchProfilePayload {
@@ -31,6 +42,7 @@ export interface SearchSchemaCapabilities {
   hasLegacyRoomAccentColumn: boolean;
   hasRoomSoftDeleteColumn: boolean;
   hasRoomAccessRequests: boolean;
+  hasPostPublicIdColumn: boolean;
 }
 
 export interface SearchProfileRow extends RowDataPacket {
@@ -39,6 +51,20 @@ export interface SearchProfileRow extends RowDataPacket {
   display_name: string | null;
   avatar_url: string | null;
   bio: string | null;
+  search_rank: number | string;
+}
+
+export interface SearchPostRow extends RowDataPacket {
+  post_id: number | string;
+  post_public_id: string | null;
+  post_body: string | null;
+  post_created_at: string | null;
+  user_id: number | string;
+  handle: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  room_slug: string | null;
+  room_name: string | null;
   search_rank: number | string;
 }
 
@@ -65,6 +91,7 @@ export function searchPayloadFromResults(
   query: string,
   profiles: SearchProfilePayload[],
   rooms: RoomPayload[],
+  posts: SearchPostPayload[] = [],
 ): SearchPayload {
   return {
     query,
@@ -72,7 +99,40 @@ export function searchPayloadFromResults(
     results: {
       profiles,
       rooms,
+      posts,
     },
+  };
+}
+
+export function searchPostPayloadFromRow(row: SearchPostRow): SearchPostPayload {
+  const id = numberValue(row.post_id);
+  const handle = stringValue(row.handle);
+  const displayName = stringValue(row.display_name, handle);
+  const publicId = nullableStringValue(row.post_public_id) ?? String(id);
+  const roomSlug = nullableStringValue(row.room_slug);
+  const roomName = nullableStringValue(row.room_name);
+
+  return {
+    id,
+    publicId,
+    canonicalPath: `/@${encodeURIComponent(handle)}/posts/${encodeURIComponent(publicId)}`,
+    bodySnippet: postBodySnippet(row.post_body),
+    createdAt: nullableStringValue(row.post_created_at),
+    author: {
+      id: numberValue(row.user_id),
+      handle,
+      displayName,
+      initials: initialsFromName(displayName),
+      aura: "frost",
+      avatarUrl: nullableStringValue(row.avatar_url),
+    },
+    room:
+      roomSlug && roomName
+        ? {
+            slug: roomSlug,
+            name: roomName,
+          }
+        : null,
   };
 }
 
@@ -230,6 +290,52 @@ export function buildSearchRoomsQuery(
         LIMIT ${searchResultLimit}`;
 }
 
+export function buildSearchPostsQuery(
+  capabilities: SearchSchemaCapabilities,
+  viewerUserId: number | null,
+): string {
+  const profileVisibilityFilter = capabilities.hasProfileVisibilityColumn
+    ? "AND pr.visibility = 'public'"
+    : "";
+  const publicIdSelect = capabilities.hasPostPublicIdColumn
+    ? "p.public_id"
+    : "NULL";
+
+  return `SELECT
+            p.id AS post_id,
+            ${publicIdSelect} AS post_public_id,
+            p.body AS post_body,
+            p.created_at AS post_created_at,
+            u.id AS user_id,
+            u.handle,
+            pr.display_name,
+            pr.avatar_url,
+            rooms.slug AS room_slug,
+            rooms.name AS room_name,
+            CASE
+                WHEN LOWER(TRIM(p.body)) = ? THEN 0
+                WHEN LOWER(p.body) LIKE ? THEN 1
+                ELSE 2
+            END AS search_rank
+         FROM posts p
+         INNER JOIN users u ON u.id = p.author_id
+         INNER JOIN profiles pr ON pr.user_id = u.id
+         LEFT JOIN rooms ON rooms.id = p.room_id
+         WHERE p.parent_id IS NULL
+           AND p.visibility = 'public'
+           AND p.status = 'published'
+           AND p.deleted_at IS NULL
+           AND p.body IS NOT NULL
+           AND TRIM(p.body) <> ''
+           AND (p.room_id IS NULL OR (rooms.visibility IN ('public', 'view_only') ${roomNotDeletedSql("rooms", capabilities)}))
+           AND ${userPubliclyAvailableSql("u", capabilities)}
+           ${profileVisibilityFilter}
+           ${viewerFeedRelationshipFilterSql(viewerUserId, "u.id", capabilities)}
+           AND LOWER(p.body) LIKE ?
+         ORDER BY search_rank ASC, p.created_at DESC, p.id DESC
+         LIMIT ${searchResultLimit}`;
+}
+
 export function createSearchRepository(pool: Pool): SearchRepository {
   return new MysqlSearchRepository(pool);
 }
@@ -250,19 +356,29 @@ class MysqlSearchRepository implements SearchRepository {
     const exact = query.toLowerCase();
     const likePrefix = searchLikePattern(query, true);
     const likeAnywhere = searchLikePattern(query, false);
-    const [profileRows] = await this.pool.execute<SearchProfileRow[]>(
-      buildSearchProfilesQuery(capabilities, viewerUserId),
-      [exact, likePrefix, likePrefix, likeAnywhere, likeAnywhere, likeAnywhere, likeAnywhere, likeAnywhere],
-    );
-    const [roomRows] = await this.pool.execute<(RoomRow & RowDataPacket)[]>(
-      buildSearchRoomsQuery(capabilities, viewerUserId, viewerRole),
-      [exact, likePrefix, likePrefix, likeAnywhere, likeAnywhere, likeAnywhere, likeAnywhere, likeAnywhere],
-    );
+    const [profileResult, roomResult, postResult] = await Promise.all([
+      this.pool.execute<SearchProfileRow[]>(
+        buildSearchProfilesQuery(capabilities, viewerUserId),
+        [exact, likePrefix, likePrefix, likeAnywhere, likeAnywhere, likeAnywhere, likeAnywhere, likeAnywhere],
+      ),
+      this.pool.execute<(RoomRow & RowDataPacket)[]>(
+        buildSearchRoomsQuery(capabilities, viewerUserId, viewerRole),
+        [exact, likePrefix, likePrefix, likeAnywhere, likeAnywhere, likeAnywhere, likeAnywhere, likeAnywhere],
+      ),
+      this.pool.execute<SearchPostRow[]>(
+        buildSearchPostsQuery(capabilities, viewerUserId),
+        [exact, likePrefix, likeAnywhere],
+      ),
+    ]);
+    const [profileRows] = profileResult;
+    const [roomRows] = roomResult;
+    const [postRows] = postResult;
 
     return searchPayloadFromResults(
       query,
       profileRows.map((row) => searchProfilePayloadFromRow(row)),
       roomRows.map((row) => roomPayloadFromRow(row)),
+      postRows.map((row) => searchPostPayloadFromRow(row)),
     );
   }
 
@@ -287,6 +403,7 @@ class MysqlSearchRepository implements SearchRepository {
       hasLegacyRoomAccentColumn,
       hasRoomSoftDeleteColumn,
       hasRoomAccessRequests,
+      hasPostPublicIdColumn,
     ] = await Promise.all([
       this.tableExists("account_deletion_requests"),
       this.columnExists("profiles", "visibility"),
@@ -301,6 +418,7 @@ class MysqlSearchRepository implements SearchRepository {
       this.columnExists("rooms", "accent"),
       this.columnExists("rooms", "deleted_at"),
       this.tableExists("room_access_requests"),
+      this.columnExists("posts", "public_id"),
     ]);
 
     return {
@@ -314,6 +432,7 @@ class MysqlSearchRepository implements SearchRepository {
       hasLegacyRoomAccentColumn,
       hasRoomSoftDeleteColumn,
       hasRoomAccessRequests,
+      hasPostPublicIdColumn,
     };
   }
 
@@ -348,6 +467,15 @@ class MysqlSearchRepository implements SearchRepository {
 
     return row === undefined ? false : numberValue(row.column_count) > 0;
   }
+}
+
+function postBodySnippet(value: string | null): string {
+  const body = stringValue(value).replace(/\s+/g, " ").trim();
+  const characters = [...body];
+
+  return characters.length > 180
+    ? `${characters.slice(0, 177).join("")}…`
+    : body;
 }
 
 function userPubliclyAvailableSql(alias: string, capabilities: SearchSchemaCapabilities): string {

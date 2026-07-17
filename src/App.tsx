@@ -1,6 +1,6 @@
 import { MotionConfig } from "motion/react";
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router";
-import { lazy, Suspense, useEffect, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, type ReactNode } from "react";
 import { AppShell } from "./components/layout/AppShell";
 import { captureGrowthAttribution } from "./lib/growthAttribution";
 
@@ -169,9 +169,21 @@ function ProfileHandleRoute() {
 
 function ScrollToTop() {
   const { pathname } = useLocation();
+  const previousPathnameRef = useRef(pathname);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
+
+    if (previousPathnameRef.current !== pathname) {
+      previousPathnameRef.current = pathname;
+      const focusFrame = window.requestAnimationFrame(() => {
+        document.getElementById("main-content")?.focus({ preventScroll: true });
+      });
+
+      return () => window.cancelAnimationFrame(focusFrame);
+    }
+
+    previousPathnameRef.current = pathname;
   }, [pathname]);
 
   return null;

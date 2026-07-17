@@ -13,6 +13,7 @@ import { useOutletContext } from "react-router";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
 import { FeedRefreshControls } from "../components/social/FeedRefreshControls";
+import { InfiniteFeedTrigger } from "../components/social/InfiniteFeedTrigger";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -20,13 +21,14 @@ import { Panel } from "../components/ui/Panel";
 import { RouteHeader } from "../components/ui/RouteState";
 import { PostCard } from "../components/social/PostCard";
 import { RoomCard } from "../components/social/RoomCard";
-import { deletePost, getDiscoverFeed, getHomeFeed, getRooms, updatePost } from "../lib/api";
+import { deletePost, getHomeFeed, getLandingFeed, getRooms, updatePost } from "../lib/api";
 import { postCreatedEventName } from "../lib/postEvents";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
-import type { Post, Room } from "../lib/types";
+import type { HomeFeed, Post, Room } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
+import { usePaginatedData } from "../lib/usePaginatedData";
 
 export function HomePage() {
   const { status } = useAuth();
@@ -53,7 +55,7 @@ export function HomePage() {
 function AuthenticatedHomePage() {
   const { csrfToken, user } = useAuth();
   const { openPostComposer } = useOutletContext<AppShellOutletContext>();
-  const feedState = useAsyncData(getHomeFeed);
+  const feedState = usePaginatedData(getHomeFeed, mergeHomeFeedPages);
   const roomsState = useAsyncData(getRooms);
   const [createdPosts, setCreatedPosts] = useState<Post[]>([]);
   const [removedPostIds, setRemovedPostIds] = useState<Set<number>>(
@@ -238,6 +240,13 @@ function AuthenticatedHomePage() {
               />
             ))
           : null}
+
+        <InfiniteFeedTrigger
+          hasMore={feedState.hasMore}
+          loading={feedState.loadingMore}
+          loadMoreError={feedState.loadMoreError}
+          onLoadMore={feedState.loadMore}
+        />
       </section>
 
       <aside className="space-y-4" aria-label="Platform sidebar">
@@ -272,19 +281,15 @@ function AuthenticatedHomePage() {
 }
 
 function AnonymousHomePage() {
-  const discoverState = useAsyncData(getDiscoverFeed);
-  const publicHomeState = useAsyncData(getHomeFeed);
-  const roomsState = useAsyncData(getRooms);
-  const discoverPosts = discoverState.data?.posts ?? [];
-  const publicHomePosts = publicHomeState.data?.posts ?? [];
-  const posts = discoverPosts.length > 0 ? discoverPosts : publicHomePosts;
+  const landingState = useAsyncData(getLandingFeed);
+  const posts = landingState.data?.posts ?? [];
   const activeRooms = useMemo(
-    () => discoverState.data?.activeRooms ?? [],
-    [discoverState.data?.activeRooms],
+    () => landingState.data?.activeRooms ?? [],
+    [landingState.data?.activeRooms],
   );
   const starterRooms = useMemo(
-    () => selectStarterRooms(roomsState.data ?? [], activeRooms),
-    [activeRooms, roomsState.data],
+    () => selectStarterRooms(activeRooms, activeRooms),
+    [activeRooms],
   );
   const heroPost =
     posts.find((post) => post.room && starterRoomSlugSet.has(post.room.slug)) ??
@@ -292,9 +297,7 @@ function AnonymousHomePage() {
   const freshPosts = posts
     .filter((post) => post.id !== heroPost?.id)
     .slice(0, 4);
-  const publicActivityUnavailable = Boolean(
-    discoverState.error && publicHomeState.error && posts.length === 0,
-  );
+  const publicActivityUnavailable = Boolean(landingState.error && posts.length === 0);
 
   return (
     <motion.div
@@ -378,8 +381,8 @@ function AnonymousHomePage() {
 
       <StarterCommunities
         rooms={starterRooms}
-        loading={roomsState.loading && starterRooms.length === 0}
-        error={Boolean(roomsState.error && starterRooms.length === 0)}
+        loading={landingState.loading && starterRooms.length === 0}
+        error={Boolean(landingState.error && starterRooms.length === 0)}
       />
 
       <section className="space-y-4" aria-label="Fresh from the community">
@@ -402,7 +405,7 @@ function AnonymousHomePage() {
           </ButtonLink>
         </div>
 
-        {discoverState.loading || (discoverPosts.length === 0 && publicHomeState.loading) ? (
+        {landingState.loading ? (
           <ApiStateNotice
             kind="loading"
             title="Loading public posts"
@@ -410,8 +413,7 @@ function AnonymousHomePage() {
           />
         ) : null}
 
-        {!discoverState.loading &&
-        !publicHomeState.loading &&
+        {!landingState.loading &&
         !publicActivityUnavailable &&
         freshPosts.length === 0 ? (
           <EmptyState icon={MessageCircle} title="No posts yet" text="No public posts." />
@@ -457,6 +459,19 @@ function AnonymousHomePage() {
       </Panel>
     </motion.div>
   );
+}
+
+function mergeHomeFeedPages(current: HomeFeed, next: HomeFeed): HomeFeed {
+  const posts = [...current.posts, ...next.posts].filter(
+    (post, index, allPosts) =>
+      allPosts.findIndex((candidate) => candidate.id === post.id) === index,
+  );
+
+  return {
+    ...next,
+    personalized: current.personalized || next.personalized,
+    posts,
+  };
 }
 
 const starterRoomSlugs = ["start-here", "show-your-work", "cozy-games"] as const;

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { FeedRefreshControls } from "../components/social/FeedRefreshControls";
+import { InfiniteFeedTrigger } from "../components/social/InfiniteFeedTrigger";
 import { PostCard } from "../components/social/PostCard";
 import { RoomCard } from "../components/social/RoomCard";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
@@ -18,13 +19,13 @@ import { cn } from "../lib/classNames";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
-import type { DiscoverPerson, Post, Room } from "../lib/types";
-import { useAsyncData } from "../lib/useAsyncData";
+import type { DiscoverFeed, DiscoverPerson, Post, Room } from "../lib/types";
 import { useAuth } from "../lib/useAuth";
+import { usePaginatedData } from "../lib/usePaginatedData";
 
 export function DiscoverPage() {
   const { csrfToken, user } = useAuth();
-  const discoverState = useAsyncData(getDiscoverFeed);
+  const discoverState = usePaginatedData(getDiscoverFeed, mergeDiscoverFeedPages);
   const [removedPostIds, setRemovedPostIds] = useState<Set<number>>(() => new Set());
   const [pendingPostId, setPendingPostId] = useState<number | undefined>();
   const [postActionError, setPostActionError] = useState<string | undefined>();
@@ -170,6 +171,13 @@ export function DiscoverPage() {
         className={discoverLayoutClass(visibleRooms.length > 0, visiblePeople.length > 0)}
         data-testid="discover-layout"
       >
+        {visibleRooms.length > 0 || visiblePeople.length > 0 ? (
+          <DiscoverMobileHighlights
+            rooms={visibleRooms.slice(0, 2)}
+            people={visiblePeople.slice(0, 3)}
+          />
+        ) : null}
+
         {visibleRooms.length > 0 ? (
           <DiscoverRoomsSection
             rooms={visibleRooms}
@@ -186,6 +194,10 @@ export function DiscoverPage() {
           canHide={() => canHidePost(user)}
           onDelete={(post) => void handleDeletePost(post)}
           onHide={(post) => void handleHidePost(post)}
+          hasMore={discoverState.hasMore}
+          loadingMore={discoverState.loadingMore}
+          loadMoreError={discoverState.loadMoreError}
+          onLoadMore={discoverState.loadMore}
           className={discoverRisingSectionClass(visibleRooms.length > 0)}
         />
 
@@ -205,7 +217,11 @@ function DiscoverRisingSection({
   canHide,
   className,
   error,
+  hasMore,
   loading,
+  loadingMore,
+  loadMoreError,
+  onLoadMore,
   onDelete,
   onHide,
   pendingPostId,
@@ -215,7 +231,11 @@ function DiscoverRisingSection({
   canHide: (post: Post) => boolean;
   className?: string;
   error: unknown;
+  hasMore: boolean;
   loading: boolean;
+  loadingMore: boolean;
+  loadMoreError?: Error | undefined;
+  onLoadMore: () => Promise<void>;
   onDelete: (post: Post) => void;
   onHide: (post: Post) => void;
   pendingPostId: number | undefined;
@@ -253,6 +273,12 @@ function DiscoverRisingSection({
             onHide={(targetPost) => onHide(targetPost)}
           />
         ))}
+        <InfiniteFeedTrigger
+          hasMore={hasMore}
+          loading={loadingMore}
+          loadMoreError={loadMoreError}
+          onLoadMore={onLoadMore}
+        />
       </div>
     </section>
   );
@@ -286,6 +312,59 @@ function DiscoverRoomsSection({
         ))}
       </div>
     </section>
+  );
+}
+
+function DiscoverMobileHighlights({
+  people,
+  rooms,
+}: {
+  people: DiscoverPerson[];
+  rooms: Room[];
+}) {
+  return (
+    <div
+      className="order-1 space-y-4 xl:hidden"
+      data-testid="discover-mobile-highlights"
+    >
+      {rooms.length > 0 ? (
+        <section aria-label="Active rooms">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-text">Active rooms</h2>
+            <Link
+              to="/rooms"
+              className="text-sm font-medium text-accent-strong underline-offset-4 hover:underline"
+            >
+              View all
+            </Link>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {rooms.map((room, index) => (
+              <RoomCard key={room.id} room={room} index={index} />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {people.length > 0 ? (
+        <section aria-label="People">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-text">People</h2>
+            <Link
+              to="/search"
+              className="text-sm font-medium text-accent-strong underline-offset-4 hover:underline"
+            >
+              Search
+            </Link>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {people.map((person, index) => (
+              <PersonCard key={person.handle} person={person} index={index} compact />
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </div>
   );
 }
 
@@ -334,27 +413,29 @@ function discoverLayoutClass(hasRooms: boolean, hasPeople: boolean) {
 }
 
 function discoverRoomsSectionClass() {
-  return "order-2 min-w-0 xl:sticky xl:top-20 xl:order-none xl:col-start-1 xl:row-start-1 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto xl:pr-1";
+  return "hidden min-w-0 xl:sticky xl:top-20 xl:order-none xl:col-start-1 xl:row-start-1 xl:block xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto xl:pr-1";
 }
 
 function discoverRisingSectionClass(hasRooms: boolean) {
   return cn(
-    "order-1 min-w-0 xl:order-none xl:row-start-1",
+    "order-2 min-w-0 xl:order-none xl:row-start-1",
     hasRooms ? "xl:col-start-2" : "xl:col-start-1",
   );
 }
 
 function discoverPeopleSectionClass(hasRooms: boolean) {
   return cn(
-    "order-3 min-w-0 xl:sticky xl:top-20 xl:order-none xl:row-start-1 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto xl:pl-1",
+    "hidden min-w-0 xl:sticky xl:top-20 xl:order-none xl:row-start-1 xl:block xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto xl:pl-1",
     hasRooms ? "xl:col-start-3" : "xl:col-start-2",
   );
 }
 
 function PersonCard({
+  compact = false,
   index,
   person,
 }: {
+  compact?: boolean;
   index: number;
   person: DiscoverPerson;
 }) {
@@ -366,7 +447,7 @@ function PersonCard({
       animate="show"
       data-render-deferred="side-rail"
     >
-      <Panel interactive className="h-full p-3 shadow-none">
+      <Panel interactive className={cn("h-full shadow-none", compact ? "p-2.5" : "p-3")}>
         <Link
           to={`/@${person.handle}`}
           className="flex h-full flex-col focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
@@ -394,12 +475,12 @@ function PersonCard({
               <Badge tone="cool">Following</Badge>
             ) : null}
           </div>
-          {person.bioSnippet ? (
+          {!compact && person.bioSnippet ? (
             <p className="mt-3 line-clamp-2 flex-1 text-sm leading-5 text-muted">
               {person.bioSnippet}
             </p>
           ) : null}
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted">
+          <div className={cn("flex flex-wrap gap-2 text-xs text-muted", compact ? "mt-2" : "mt-3")}>
             <span className="inline-flex items-center gap-1 rounded-control bg-canvas/55 px-1.5 py-0.5">
               <MessageCircle aria-hidden="true" size={14} />
               {formatCountWithUnit(person.postCount, "post")}
@@ -417,4 +498,22 @@ function PersonCard({
       </Panel>
     </motion.article>
   );
+}
+
+function mergeDiscoverFeedPages(
+  current: DiscoverFeed,
+  next: DiscoverFeed,
+): DiscoverFeed {
+  const posts = [...current.posts, ...next.posts].filter(
+    (post, index, allPosts) =>
+      allPosts.findIndex((candidate) => candidate.id === post.id) === index,
+  );
+
+  return {
+    ...next,
+    activeRooms: next.activeRooms.length > 0 ? next.activeRooms : current.activeRooms,
+    peopleToWatch:
+      next.peopleToWatch.length > 0 ? next.peopleToWatch : current.peopleToWatch,
+    posts,
+  };
 }

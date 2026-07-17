@@ -2831,6 +2831,21 @@ function ProfileIntegrationRichCard({
     );
   }
 
+  if (
+    integration.provider === "twitch" &&
+    showPrimaryEmbed &&
+    metadata.live === false &&
+    Boolean(metadata.liveFetchedAt)
+  ) {
+    return (
+      <TwitchOfflineSurface
+        imageUrl={metadata.imageUrl}
+        sourceUrl={integration.sourceUrl}
+        title={title}
+      />
+    );
+  }
+
   if (showTwitchStreamChat && primaryEmbed && primaryEmbedSrc && twitchChatSrc) {
     if (presentationMode === "mobile-stack") {
       const showChat = mobileTwitchPanel === "chat";
@@ -2861,7 +2876,7 @@ function ProfileIntegrationRichCard({
               provider="twitch"
             />
           ) : (
-            <iframe
+            <DeferredTwitchIframe
               className={cn(
                 "block min-h-0 min-w-0 flex-1 w-full rounded-card border-0",
                 showChat ? "bg-surface" : "bg-black",
@@ -2869,13 +2884,10 @@ function ProfileIntegrationRichCard({
               title={showChat ? "Twitch chat" : primaryEmbed.title}
               src={showChat ? twitchChatSrc : primaryEmbedSrc}
               height={360}
-              loading="lazy"
-              referrerPolicy="strict-origin-when-cross-origin"
               allow={showChat ? undefined : primaryEmbed.allow}
               sandbox={twitchEmbedSandbox}
               allowFullScreen={!showChat}
-              data-profile-embed-provider="twitch"
-              data-testid={
+              testId={
                 showChat
                   ? "profile-integration-embed-twitch-chat"
                   : "profile-integration-embed-twitch"
@@ -2907,18 +2919,15 @@ function ProfileIntegrationRichCard({
               provider="twitch"
             />
           ) : (
-            <iframe
+            <DeferredTwitchIframe
               className="profile-twitch-embed-frame block h-full min-h-0 min-w-0 w-full rounded-card border-0 bg-black"
               title={primaryEmbed.title}
               src={primaryEmbedSrc}
               height={360}
-              loading="lazy"
-              referrerPolicy="strict-origin-when-cross-origin"
               allow={primaryEmbed.allow}
               sandbox={twitchEmbedSandbox}
               allowFullScreen
-              data-profile-embed-provider={integration.provider}
-              data-testid={`profile-integration-embed-${integration.provider}`}
+              testId={`profile-integration-embed-${integration.provider}`}
             />
           )}
           {captureMode ? (
@@ -2929,15 +2938,13 @@ function ProfileIntegrationRichCard({
               provider="twitch"
             />
           ) : (
-            <iframe
+            <DeferredTwitchIframe
               className="profile-twitch-embed-frame block h-full min-h-0 min-w-0 w-full rounded-card border-0 bg-surface"
               title="Twitch chat"
               src={twitchChatSrc}
               height={360}
-              loading="lazy"
-              referrerPolicy="strict-origin-when-cross-origin"
               sandbox={twitchEmbedSandbox}
-              data-testid="profile-integration-embed-twitch-chat"
+              testId="profile-integration-embed-twitch-chat"
             />
           )}
         </div>
@@ -2961,6 +2968,17 @@ function ProfileIntegrationRichCard({
             label={title}
             provider={integration.provider}
           />
+        ) : integration.provider === "twitch" ? (
+          <DeferredTwitchIframe
+            className="profile-media-embed-frame block h-full min-h-0 w-full rounded-card border-0 bg-black"
+            title={primaryEmbed.title}
+            src={primaryEmbedSrc ?? primaryEmbed.src}
+            height={primaryEmbedHeight}
+            allow={primaryEmbed.allow}
+            sandbox={twitchEmbedSandbox}
+            allowFullScreen
+            testId="profile-integration-embed-twitch"
+          />
         ) : (
           <iframe
             className="profile-media-embed-frame block h-full min-h-0 w-full rounded-card border-0 bg-black"
@@ -2970,11 +2988,7 @@ function ProfileIntegrationRichCard({
             loading="lazy"
             referrerPolicy="strict-origin-when-cross-origin"
             allow={primaryEmbed.allow}
-            sandbox={
-              integration.provider === "twitch"
-                ? twitchEmbedSandbox
-                : "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
-            }
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
             allowFullScreen
             data-profile-embed-provider={integration.provider}
             data-profile-media-only-embed="true"
@@ -3038,6 +3052,20 @@ function ProfileIntegrationRichCard({
             label={title}
             provider={integration.provider}
           />
+        ) : integration.provider === "twitch" ? (
+          <DeferredTwitchIframe
+            className={cn(
+              "block w-full border-t border-line bg-transparent",
+              twitchChatSrc ? "min-h-0 flex-1" : undefined,
+            )}
+            title={primaryEmbed.title}
+            src={primaryEmbedSrc ?? primaryEmbed.src}
+            height={twitchChatSrc ? 260 : primaryEmbedHeight}
+            allow={primaryEmbed.allow}
+            sandbox={twitchEmbedSandbox}
+            allowFullScreen
+            testId="profile-integration-embed-twitch"
+          />
         ) : (
           <iframe
             className={cn(
@@ -3047,20 +3075,155 @@ function ProfileIntegrationRichCard({
             title={primaryEmbed.title}
             src={primaryEmbedSrc}
             height={twitchChatSrc ? 260 : primaryEmbedHeight}
-            loading={integration.provider === "twitch" ? "eager" : "lazy"}
+            loading="lazy"
             referrerPolicy="strict-origin-when-cross-origin"
             allow={primaryEmbed.allow}
-            sandbox={
-              integration.provider === "twitch"
-                ? twitchEmbedSandbox
-                : "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
-            }
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
             allowFullScreen
             data-profile-embed-provider={integration.provider}
             data-testid={`profile-integration-embed-${integration.provider}`}
           />
         )
       ) : null}
+    </div>
+  );
+}
+
+function DeferredTwitchIframe({
+  allow,
+  allowFullScreen = false,
+  className,
+  height,
+  sandbox,
+  src,
+  testId,
+  title,
+}: {
+  allow?: string | undefined;
+  allowFullScreen?: boolean;
+  className: string;
+  height: number;
+  sandbox: string;
+  src: string;
+  testId: string;
+  title: string;
+}) {
+  const placeholderRef = useRef<HTMLButtonElement>(null);
+  const [shouldLoad, setShouldLoad] = useState(false);
+
+  useEffect(() => {
+    const placeholder = placeholderRef.current;
+
+    if (shouldLoad || !placeholder) {
+      return;
+    }
+
+    if (typeof IntersectionObserver === "undefined") {
+      const frame = window.setTimeout(() => setShouldLoad(true), 0);
+
+      return () => window.clearTimeout(frame);
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          observer.disconnect();
+          setShouldLoad(true);
+        }
+      },
+      { rootMargin: "320px 0px" },
+    );
+
+    observer.observe(placeholder);
+
+    return () => observer.disconnect();
+  }, [shouldLoad]);
+
+  if (shouldLoad) {
+    return (
+      <iframe
+        className={className}
+        title={title}
+        src={src}
+        height={height}
+        loading="lazy"
+        referrerPolicy="strict-origin-when-cross-origin"
+        allow={allow}
+        sandbox={sandbox}
+        allowFullScreen={allowFullScreen}
+        data-profile-embed-provider="twitch"
+        data-testid={testId}
+      />
+    );
+  }
+
+  const usesFlexibleHeight = className.includes("h-full") || className.includes("flex-1");
+
+  return (
+    <button
+      ref={placeholderRef}
+      type="button"
+      className={cn(
+        className,
+        "group grid place-items-center border border-line bg-canvas/78 text-center text-text transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+      )}
+      style={usesFlexibleHeight ? undefined : { height }}
+      aria-label={`Load ${title}`}
+      data-testid="profile-twitch-deferred"
+      onClick={() => setShouldLoad(true)}
+    >
+      <span className="inline-flex items-center gap-2 rounded-control bg-surface/88 px-3 py-2 text-sm font-semibold shadow-soft">
+        <Radio aria-hidden="true" size={16} />
+        Load Twitch
+      </span>
+    </button>
+  );
+}
+
+function TwitchOfflineSurface({
+  imageUrl,
+  sourceUrl,
+  title,
+}: {
+  imageUrl?: string | null | undefined;
+  sourceUrl: string;
+  title: string;
+}) {
+  return (
+    <div
+      className="relative isolate flex h-full min-h-0 items-center justify-center overflow-hidden rounded-card border border-line bg-canvas/78 p-5 text-center text-text"
+      data-profile-twitch-embed-surface="offline"
+      data-testid="profile-twitch-offline"
+    >
+      {imageUrl ? (
+        <img
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 -z-20 size-full object-cover opacity-35"
+          decoding="async"
+          loading="lazy"
+          src={imageUrl}
+        />
+      ) : null}
+      <span className="absolute inset-0 -z-10 bg-gradient-to-b from-canvas/45 to-canvas/95" />
+      <div className="max-w-sm">
+        <span className="mx-auto grid size-11 place-items-center rounded-full border border-line bg-surface/85 text-accent-strong shadow-soft">
+          <Radio aria-hidden="true" size={20} />
+        </span>
+        <p className="mt-3 text-base font-semibold">{title} is offline</p>
+        <p className="mt-1 text-sm leading-5 text-muted">
+          The player will return here when the channel is live.
+        </p>
+        <a
+          className="app-control mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-control border border-line bg-surface px-3 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          href={sourceUrl}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          Open Twitch
+          <ExternalLink aria-hidden="true" size={15} />
+        </a>
+      </div>
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
   buildClearSessionCookies,
   type AuthLogoutResult,
   type AuthRepository,
+  type AuthHandleAvailabilityPayload,
   type AuthRequestContext,
   type AuthSessionResult,
   type TwoFactorChallengePayload,
@@ -103,6 +104,7 @@ import {
 import {
   normalizePostIdentifier,
   type DiscoverFeedPayload,
+  type FeedPageRequest,
   type HomeFeedPayload,
   type PostDetailPayload,
   type PostsRepository,
@@ -173,6 +175,14 @@ const healthQuerySchema = z.object({
 const searchQuerySchema = z
   .object({
     q: z.union([z.string(), z.array(z.string())]).optional(),
+  })
+  .passthrough();
+
+const feedQuerySchema = z
+  .object({
+    cursor: z.union([z.string(), z.array(z.string())]).optional(),
+    limit: z.union([z.string(), z.array(z.string())]).optional(),
+    view: z.union([z.string(), z.array(z.string())]).optional(),
   })
   .passthrough();
 
@@ -351,6 +361,54 @@ function searchQueryFromRequest(query: unknown): unknown {
   const value = parsed.data.q;
 
   return Array.isArray(value) ? "" : (value ?? "");
+}
+
+function feedRequestFromQuery(
+  query: unknown,
+): { landing: boolean; page: FeedPageRequest } | null {
+  const parsed = feedQuerySchema.safeParse(query);
+
+  if (!parsed.success) {
+    return null;
+  }
+
+  const cursorValue = parsed.data.cursor;
+  const limitValue = parsed.data.limit;
+  const viewValue = parsed.data.view;
+
+  if (
+    Array.isArray(cursorValue) ||
+    Array.isArray(limitValue) ||
+    Array.isArray(viewValue)
+  ) {
+    return null;
+  }
+
+  const landing = viewValue === "landing";
+
+  if (viewValue !== undefined && !landing) {
+    return null;
+  }
+
+  const offset = cursorValue === undefined ? 0 : Number(cursorValue);
+  const limit = landing ? 5 : limitValue === undefined ? 12 : Number(limitValue);
+
+  if (
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    offset > 10_000 ||
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > 20 ||
+    (landing && offset !== 0)
+  ) {
+    return null;
+  }
+
+  return {
+    landing,
+    page: { limit, offset },
+  };
 }
 
 export function nodeApiLoggerOptions(level: string): NonNullable<FastifyServerOptions["logger"]> {
@@ -2068,6 +2126,17 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     ),
   );
 
+  app.post("/auth/handle-availability", async (request, reply) =>
+    withPublicAuthRoute<AuthHandleAvailabilityPayload>(
+      request,
+      reply,
+      dependencies,
+      "auth.handle-availability",
+      (repository, body) => repository.checkHandleAvailability(body),
+      sendJsonResult,
+    ),
+  );
+
   app.post("/auth/logout", async (request, reply) => {
     if (dependencies.authRepository === undefined) {
       return internalError(request, reply, "auth.logout", new Error("Missing auth repository dependency."));
@@ -3536,9 +3605,15 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       return internalError(request, reply, "feed.home", new Error("Missing posts repository dependency."));
     }
 
+    const feedRequest = feedRequestFromQuery(request.query);
+
+    if (feedRequest === null || feedRequest.landing) {
+      return reply.status(400).send(errorPayload("Invalid feed page."));
+    }
+
     try {
       const viewerUserId = await currentViewerUserId(request, dependencies.sessionsRepository);
-      const feed = await dependencies.postsRepository.getHomeFeed(viewerUserId);
+      const feed = await dependencies.postsRepository.getHomeFeed(viewerUserId, feedRequest.page);
 
       return reply.send(successPayload<HomeFeedPayload>(feed));
     } catch (error) {
@@ -3551,21 +3626,35 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       return internalError(request, reply, "feed.discover", new Error("Missing feed repository dependency."));
     }
 
+    const feedRequest = feedRequestFromQuery(request.query);
+
+    if (feedRequest === null) {
+      return reply.status(400).send(errorPayload("Invalid feed page."));
+    }
+
     try {
       const viewerSession = await currentViewerSession(request, dependencies.sessionsRepository);
       const viewerUserId = viewerSession?.userId ?? null;
       const roomViewer = optionalRoomViewerFromSession(viewerSession);
-      const [posts, rooms, peopleToWatch] = await Promise.all([
-        dependencies.postsRepository.listDiscoverPosts(viewerUserId),
-        roomViewer === undefined
-          ? dependencies.roomsRepository.listPublicRooms()
-          : dependencies.roomsRepository.listPublicRooms(roomViewer),
-        dependencies.postsRepository.listPeopleToWatch(viewerUserId),
+      const includeContext = feedRequest.page.offset === 0;
+      const [postPage, rooms, peopleToWatch] = await Promise.all([
+        dependencies.postsRepository.listDiscoverPosts(viewerUserId, feedRequest.page),
+        includeContext
+          ? roomViewer === undefined
+            ? dependencies.roomsRepository.listPublicRooms()
+            : dependencies.roomsRepository.listPublicRooms(roomViewer)
+          : Promise.resolve([]),
+        includeContext && !feedRequest.landing
+          ? dependencies.postsRepository.listPeopleToWatch(viewerUserId)
+          : Promise.resolve([]),
       ]);
       const feed: DiscoverFeedPayload = {
-        posts,
-        activeRooms: rooms.filter((room) => room.viewerCanViewPosts || room.visibility === "public" || room.visibility === "view_only").slice(0, 6),
+        posts: postPage.posts,
+        activeRooms: rooms
+          .filter((room) => room.viewerCanViewPosts || room.visibility === "public" || room.visibility === "view_only")
+          .slice(0, feedRequest.landing ? 3 : 6),
         peopleToWatch,
+        nextCursor: feedRequest.landing ? null : postPage.nextCursor,
       };
 
       return reply.send(successPayload<DiscoverFeedPayload>(feed));

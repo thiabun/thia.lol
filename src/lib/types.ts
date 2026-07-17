@@ -601,11 +601,13 @@ export type DiscoverPerson = ProfileConnection & {
 };
 
 export type HomeFeed = {
+  nextCursor: string | null;
   posts: Post[];
   personalized: boolean;
 };
 
 export type DiscoverFeed = {
+  nextCursor: string | null;
   posts: Post[];
   activeRooms: Room[];
   peopleToWatch: DiscoverPerson[];
@@ -616,12 +618,23 @@ export type SearchProfileResult = {
   bioSnippet: string;
 };
 
+export type SearchPostResult = {
+  id: number;
+  publicId: string;
+  canonicalPath: string;
+  bodySnippet: string;
+  createdAt: string | null;
+  author: User;
+  room: { name: string; slug: string } | null;
+};
+
 export type SearchResults = {
   query: string;
   minQueryLength: number;
   results: {
     profiles: SearchProfileResult[];
     rooms: Room[];
+    posts: SearchPostResult[];
   };
 };
 

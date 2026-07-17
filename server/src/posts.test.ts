@@ -171,6 +171,17 @@ describe("post preview SQL", () => {
     expect(sql).toContain("FROM user_mutes feed_mutes");
   });
 
+  it("bounds feed pages and fetches one extra row for the next cursor", () => {
+    const homeSql = buildHomeFeedQuery(capabilities, 42, { limit: 12, offset: 24 });
+    const discoverSql = buildDiscoverFeedQuery(capabilities, null, { limit: 8, offset: 16 });
+
+    expect(homeSql).toContain("LIMIT 13 OFFSET 24");
+    expect(discoverSql).toContain("LIMIT 9 OFFSET 16");
+    expect(() =>
+      buildHomeFeedQuery(capabilities, 42, { limit: 21, offset: 0 }),
+    ).toThrow("Feed page is invalid.");
+  });
+
   it("matches PHP profile reblog query joins and ordering", () => {
     const sql = buildPublicProfileReblogsQuery(capabilities, null);
 

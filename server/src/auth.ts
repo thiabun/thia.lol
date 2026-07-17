@@ -19,6 +19,7 @@ const opensslPrefix = "openssl:";
 
 export interface AuthRepository {
   login(body: Record<string, unknown>, context: AuthRequestContext): Promise<AuthSessionResult | TwoFactorChallengePayload>;
+  checkHandleAvailability(body: Record<string, unknown>): Promise<AuthHandleAvailabilityPayload>;
   register(body: Record<string, unknown>, context: AuthRequestContext): Promise<AuthSessionResult>;
   logout(cookieHeader: string | undefined, context: AuthRequestContext): Promise<AuthLogoutResult>;
   verifyTwoFactor(body: Record<string, unknown>, context: AuthRequestContext): Promise<AuthSessionResult>;
@@ -47,6 +48,11 @@ export interface AuthRequestContext {
 export interface AuthSessionResult {
   payload: AuthSessionPayload;
   cookie: string;
+}
+
+export interface AuthHandleAvailabilityPayload {
+  available: boolean;
+  handle: string;
 }
 
 export interface AuthLogoutResult {
@@ -135,6 +141,10 @@ interface CountRow extends RowDataPacket {
 
 interface RateLimitRow extends RowDataPacket {
   attempts: number | string;
+}
+
+interface ExistingUserRow extends RowDataPacket {
+  user_exists: number | string;
 }
 
 interface TwoFactorEnabledRow extends RowDataPacket {
@@ -331,6 +341,24 @@ class MysqlAuthRepository implements AuthRepository {
     }
 
     return this.createSessionForUser(userId, context);
+  }
+
+  async checkHandleAvailability(
+    body: Record<string, unknown>,
+  ): Promise<AuthHandleAvailabilityPayload> {
+    const handle = validateAuthHandle(body.handle);
+    const [rows] = await this.pool.execute<ExistingUserRow[]>(
+      `SELECT 1 AS user_exists
+       FROM users
+       WHERE handle = ?
+       LIMIT 1`,
+      [handle],
+    );
+
+    return {
+      available: rows.length === 0,
+      handle,
+    };
   }
 
   async register(body: Record<string, unknown>, context: AuthRequestContext): Promise<AuthSessionResult> {

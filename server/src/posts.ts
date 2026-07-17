@@ -21,8 +21,19 @@ export interface PostDetailPayload extends PostPayload {
 }
 
 export interface HomeFeedPayload {
+  nextCursor: string | null;
   posts: PostPayload[];
   personalized: boolean;
+}
+
+export interface FeedPageRequest {
+  limit: number;
+  offset: number;
+}
+
+export interface FeedPostPage {
+  nextCursor: string | null;
+  posts: PostPayload[];
 }
 
 export interface DiscoverPersonPayload {
@@ -42,6 +53,7 @@ export interface DiscoverFeedPayload {
   posts: PostPayload[];
   activeRooms: RoomPayload[];
   peopleToWatch: DiscoverPersonPayload[];
+  nextCursor: string | null;
 }
 
 export interface PostsRepository {
@@ -57,8 +69,8 @@ export interface PostsRepository {
   listProfilePosts(handle: string, viewerUserId: number | null): Promise<PostPayload[] | null>;
   listProfileReplies(handle: string, viewerUserId: number | null): Promise<PostPayload[] | null>;
   listProfileReblogs(handle: string, viewerUserId: number | null): Promise<PostPayload[] | null>;
-  getHomeFeed(viewerUserId: number | null): Promise<HomeFeedPayload>;
-  listDiscoverPosts(viewerUserId: number | null): Promise<PostPayload[]>;
+  getHomeFeed(viewerUserId: number | null, page?: FeedPageRequest): Promise<HomeFeedPayload>;
+  listDiscoverPosts(viewerUserId: number | null, page?: FeedPageRequest): Promise<FeedPostPage>;
   listPeopleToWatch(viewerUserId: number | null): Promise<DiscoverPersonPayload[]>;
 }
 
@@ -269,22 +281,25 @@ class MysqlPostsRepository implements PostsRepository {
     return this.listProfilePostKind("reblogs", handle, viewerUserId);
   }
 
-  async getHomeFeed(viewerUserId: number | null): Promise<HomeFeedPayload> {
+  async getHomeFeed(viewerUserId: number | null, page?: FeedPageRequest): Promise<HomeFeedPayload> {
     const capabilities = await this.schemaCapabilities();
+    const rows = await this.postsFromQuery(buildHomeFeedQuery(capabilities, viewerUserId, page), []);
+    const result = feedPostPage(rows, page, shuffleFeedPostsByFreshness);
 
     return {
-      posts: shuffleFeedPostsByFreshness(
-        await this.postsFromQuery(buildHomeFeedQuery(capabilities, viewerUserId), []),
-      ),
+      ...result,
       personalized: viewerUserId !== null,
     };
   }
 
-  async listDiscoverPosts(viewerUserId: number | null): Promise<PostPayload[]> {
-    return diversifyDiscoverPosts(
-      shuffleFeedPostsByFreshness(
-        await this.postsFromQuery(buildDiscoverFeedQuery(await this.schemaCapabilities(), viewerUserId), []),
-      ),
+  async listDiscoverPosts(viewerUserId: number | null, page?: FeedPageRequest): Promise<FeedPostPage> {
+    const rows = await this.postsFromQuery(
+      buildDiscoverFeedQuery(await this.schemaCapabilities(), viewerUserId, page),
+      [],
+    );
+
+    return feedPostPage(rows, page, (posts) =>
+      diversifyDiscoverPosts(shuffleFeedPostsByFreshness(posts)),
     );
   }
 
@@ -794,7 +809,11 @@ export function buildPublicProfileReblogsQuery(
   );
 }
 
-export function buildHomeFeedQuery(capabilities: ProfileSchemaCapabilities, viewerUserId: number | null): string {
+export function buildHomeFeedQuery(
+  capabilities: ProfileSchemaCapabilities,
+  viewerUserId: number | null,
+  page?: FeedPageRequest,
+): string {
   const scoreSql = homeRankScoreSql(capabilities, viewerUserId);
 
   return postSelectSql(
@@ -805,10 +824,16 @@ export function buildHomeFeedQuery(capabilities: ProfileSchemaCapabilities, view
     capabilities,
     viewerUserId,
     viewerRoomMembershipJoinSql(capabilities, viewerUserId),
+    null,
+    feedPageLimitSql(page),
   );
 }
 
-export function buildDiscoverFeedQuery(capabilities: ProfileSchemaCapabilities, viewerUserId: number | null): string {
+export function buildDiscoverFeedQuery(
+  capabilities: ProfileSchemaCapabilities,
+  viewerUserId: number | null,
+  page?: FeedPageRequest,
+): string {
   const scoreSql = discoverRankScoreSql(capabilities, viewerUserId);
 
   return postSelectSql(
@@ -818,7 +843,49 @@ export function buildDiscoverFeedQuery(capabilities: ProfileSchemaCapabilities, 
     capabilities,
     viewerUserId,
     viewerRoomMembershipJoinSql(capabilities, viewerUserId),
+    null,
+    feedPageLimitSql(page),
   );
+}
+
+function feedPostPage(
+  rows: PostPayload[],
+  page: FeedPageRequest | undefined,
+  orderPosts: (posts: PostPayload[]) => PostPayload[],
+): FeedPostPage {
+  if (page === undefined) {
+    return {
+      nextCursor: null,
+      posts: orderPosts(rows),
+    };
+  }
+
+  const hasMore = rows.length > page.limit;
+  const posts = orderPosts(rows.slice(0, page.limit));
+
+  return {
+    nextCursor: hasMore ? String(page.offset + page.limit) : null,
+    posts,
+  };
+}
+
+function feedPageLimitSql(page: FeedPageRequest | undefined): string {
+  if (page === undefined) {
+    return "LIMIT 50";
+  }
+
+  if (
+    !Number.isSafeInteger(page.limit) ||
+    page.limit < 1 ||
+    page.limit > 20 ||
+    !Number.isSafeInteger(page.offset) ||
+    page.offset < 0 ||
+    page.offset > 10_000
+  ) {
+    throw new Error("Feed page is invalid.");
+  }
+
+  return `LIMIT ${page.limit + 1} OFFSET ${page.offset}`;
 }
 
 export function diversifyDiscoverPosts(posts: PostPayload[], windowSize = 12): PostPayload[] {

@@ -1,7 +1,7 @@
 import { LockKeyhole, Mail, UserRound, UserPlus } from "lucide-react";
 import { motion } from "motion/react";
 import type { FormEvent } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { BrandLogoMain } from "../components/BrandLogo";
 import { PageMeta } from "../components/PageMeta";
@@ -10,7 +10,11 @@ import { Button, ButtonLink } from "../components/ui/Button";
 import { HandleField, TextField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
-import { verifyTwoFactorLogin, type TwoFactorChallenge } from "../lib/api";
+import {
+  getHandleAvailability,
+  verifyTwoFactorLogin,
+  type TwoFactorChallenge,
+} from "../lib/api";
 import {
   clearGrowthAttribution,
   currentGrowthAttribution,
@@ -32,8 +36,52 @@ export function AuthPage({ mode }: AuthPageProps) {
   const { login, logout, refreshSession, register, status, user } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [handle, setHandle] = useState("");
+  const [handleAvailability, setHandleAvailability] = useState<
+    { available: boolean; handle: string } | undefined
+  >();
+  const [handleChecking, setHandleChecking] = useState(false);
   const [twoFactorChallenge, setTwoFactorChallenge] =
     useState<TwoFactorChallenge | undefined>();
+  const normalizedHandle = normalizeHandleInput(handle).toLowerCase();
+  const handleReady = /^[a-z0-9][a-z0-9_-]{1,38}[a-z0-9]$/u.test(
+    normalizedHandle,
+  );
+
+  useEffect(() => {
+    if (!isRegister || !handleReady) {
+      return;
+    }
+
+    let active = true;
+    const timeout = window.setTimeout(() => {
+      setHandleChecking(true);
+
+      getHandleAvailability(normalizedHandle)
+        .then((result) => {
+          if (!active) {
+            return;
+          }
+
+          setHandleAvailability(result);
+        })
+        .catch(() => {
+          if (active) {
+            setHandleAvailability(undefined);
+          }
+        })
+        .finally(() => {
+          if (active) {
+            setHandleChecking(false);
+          }
+        });
+    }, 350);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [handleReady, isRegister, normalizedHandle]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -189,7 +237,7 @@ export function AuthPage({ mode }: AuthPageProps) {
             </h1>
             <p className="mt-3 text-base leading-7 text-muted">
               {isRegister
-                ? "Choose a handle."
+                ? "Choose your public name and handle."
                 : twoFactorChallenge
                   ? "Enter your authenticator or recovery code."
                   : "Use your account."}
@@ -240,12 +288,38 @@ export function AuthPage({ mode }: AuthPageProps) {
                     placeholder="handle"
                     autoComplete="username"
                     icon={UserPlus}
+                    value={handle}
+                    onChange={(event) => {
+                      setHandle(event.currentTarget.value);
+                      setHandleAvailability(undefined);
+                      setHandleChecking(false);
+                    }}
+                    aria-describedby="handle-guidance"
                     required
                     minLength={3}
                     maxLength={41}
                     pattern="@?[A-Za-z0-9][A-Za-z0-9_-]{1,38}[A-Za-z0-9]"
                     title="Use 3-40 letters, numbers, underscores, or hyphens."
                   />
+                  <p
+                    id="handle-guidance"
+                    className={
+                      handleAvailability?.handle === normalizedHandle
+                        ? handleAvailability.available
+                          ? "-mt-2 text-xs leading-5 text-leaf-ink"
+                          : "-mt-2 text-xs leading-5 text-rose-ink"
+                        : "-mt-2 text-xs leading-5 text-muted"
+                    }
+                    aria-live="polite"
+                  >
+                    {handleChecking
+                      ? "Checking handle…"
+                      : handleAvailability?.handle === normalizedHandle
+                        ? handleAvailability.available
+                          ? `@${normalizedHandle} is available.`
+                          : `@${normalizedHandle} is already in use.`
+                        : "Use 3–40 letters, numbers, underscores, or hyphens."}
+                  </p>
                 </>
               ) : null}
               {!twoFactorChallenge ? (
@@ -271,12 +345,27 @@ export function AuthPage({ mode }: AuthPageProps) {
                     required
                     minLength={isRegister ? 10 : undefined}
                     maxLength={255}
+                    aria-describedby={isRegister ? "password-guidance" : undefined}
                   />
+                  {isRegister ? (
+                    <p id="password-guidance" className="-mt-2 text-xs leading-5 text-muted">
+                      Use at least 10 characters.
+                    </p>
+                  ) : null}
                 </>
               ) : null}
             </div>
 
-            <Button type="submit" className="mt-6 w-full" disabled={submitting}>
+            <Button
+              type="submit"
+              className="mt-6 min-h-11 w-full"
+              disabled={
+                submitting ||
+                (isRegister &&
+                  handleAvailability?.handle === normalizedHandle &&
+                  !handleAvailability.available)
+              }
+            >
               {submitting
                 ? "Working..."
                 : twoFactorChallenge

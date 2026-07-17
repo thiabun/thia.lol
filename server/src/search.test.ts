@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildSearchPostsQuery,
   buildSearchProfilesQuery,
   buildSearchRoomsQuery,
   normalizeSearchQuery,
   searchLikePattern,
+  searchPostPayloadFromRow,
   searchPayloadFromResults,
   searchProfilePayloadFromRow,
   type SearchProfileRow,
+  type SearchPostRow,
   type SearchSchemaCapabilities,
 } from "./search.js";
 
@@ -22,6 +25,7 @@ const capabilities: SearchSchemaCapabilities = {
   hasLegacyRoomAccentColumn: false,
   hasRoomSoftDeleteColumn: true,
   hasRoomAccessRequests: true,
+  hasPostPublicIdColumn: true,
 };
 
 describe("search preview helpers", () => {
@@ -59,6 +63,39 @@ describe("search preview helpers", () => {
     });
   });
 
+  it("maps post rows to compact canonical search results", () => {
+    expect(
+      searchPostPayloadFromRow({
+        post_id: "9",
+        post_public_id: "pabcdef12345",
+        post_body: "  A searchable   public post.  ",
+        post_created_at: "2026-07-17 12:00:00",
+        user_id: "7",
+        handle: "thia",
+        display_name: "Thia Bun",
+        avatar_url: null,
+        room_slug: "general",
+        room_name: "General",
+        search_rank: 1,
+      } as SearchPostRow),
+    ).toEqual({
+      id: 9,
+      publicId: "pabcdef12345",
+      canonicalPath: "/@thia/posts/pabcdef12345",
+      bodySnippet: "A searchable public post.",
+      createdAt: "2026-07-17 12:00:00",
+      author: {
+        id: 7,
+        handle: "thia",
+        displayName: "Thia Bun",
+        initials: "TB",
+        aura: "frost",
+        avatarUrl: null,
+      },
+      room: { name: "General", slug: "general" },
+    });
+  });
+
   it("builds the short-query empty payload without database results", () => {
     expect(searchPayloadFromResults("t", [], [])).toEqual({
       query: "t",
@@ -66,6 +103,7 @@ describe("search preview helpers", () => {
       results: {
         profiles: [],
         rooms: [],
+        posts: [],
       },
     });
   });
@@ -125,5 +163,20 @@ describe("search preview SQL", () => {
     expect(query).toContain("NULL AS room_icon_url");
     expect(query).not.toContain("room_member_counts");
     expect(query).not.toContain("rooms.deleted_at IS NULL");
+  });
+
+  it("searches only visible top-level posts with viewer safety filters", () => {
+    const query = buildSearchPostsQuery(capabilities, 42);
+
+    expect(query).toContain("p.public_id AS post_public_id");
+    expect(query).toContain("p.parent_id IS NULL");
+    expect(query).toContain("p.visibility = 'public'");
+    expect(query).toContain("rooms.visibility IN ('public', 'view_only')");
+    expect(query).toContain("AND rooms.deleted_at IS NULL");
+    expect(query).toContain("pr.visibility = 'public'");
+    expect(query).toContain("pair_blocks.blocker_id = 42");
+    expect(query).toContain("feed_mutes.muter_id = 42");
+    expect(query).toContain("ORDER BY search_rank ASC, p.created_at DESC, p.id DESC");
+    expect(query).toContain("LIMIT 8");
   });
 });

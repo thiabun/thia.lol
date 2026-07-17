@@ -337,6 +337,21 @@ test("authenticated account menu uses one row pattern", async ({ page }) => {
   await expect(menu).toBeHidden();
 });
 
+test("account menu rows keep coarse-pointer touch targets", async ({ page }) => {
+  await mockAuthenticatedShell(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: /account menu/i }).click();
+  const menuItems = page.getByTestId("account-menu").getByRole("menuitem");
+  const heights = await menuItems.evaluateAll((items) =>
+    items.map((item) => (item as HTMLElement).offsetHeight),
+  );
+
+  expect(heights.length).toBeGreaterThan(0);
+  expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+});
+
 test("authenticated members see each What’s New release once", async ({ page }) => {
   await mockAuthenticatedShell(page);
   await page.addInitScript(
@@ -681,8 +696,51 @@ test("auth pages show compact brand identity without horizontal overflow", async
     await expect(
       page.getByRole("link", { name: "Community Guidelines" }),
     ).toBeVisible();
+    await expect(page.getByTestId("mobile-nav")).toHaveCount(0);
+    await expect(page.getByTestId("coffee-support-button")).toBeHidden();
     await expectNoHorizontalOverflow(page);
   }
+});
+
+test("registration uses the authoritative handle availability endpoint", async ({
+  page,
+}) => {
+  await mockPublicShell(page);
+  await acknowledgeCookieNotice(page);
+  await page.route("**/api/auth/handle-availability", async (route) => {
+    const payload = (await route.request().postDataJSON()) as { handle?: string };
+
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { available: false, handle: payload.handle },
+      }),
+    });
+  });
+  await page.goto("/register");
+
+  await page.getByRole("textbox", { name: "Handle" }).fill("thia");
+  await expect(page.getByText("@thia is already in use.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create account" })).toBeDisabled();
+});
+
+test("skip navigation and route changes move keyboard focus to main content", async ({
+  page,
+}) => {
+  await mockPublicShell(page);
+  await acknowledgeCookieNotice(page);
+  await page.goto("/discover");
+
+  await page.keyboard.press("Tab");
+  const skipLink = page.getByRole("link", { name: "Skip to content" });
+  await expect(skipLink).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#main-content")).toBeFocused();
+
+  await page.getByRole("link", { name: "Browse rooms" }).click();
+  await expect(page).toHaveURL(/\/rooms$/);
+  await expect(page.locator("#main-content")).toBeFocused();
 });
 
 test("login returnTo accepts internal paths", async ({ page }) => {
