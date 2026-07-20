@@ -48,19 +48,19 @@ test.describe("authenticated smoke", () => {
 
     await expect(menu.getByRole("menuitem", { name: "Profile" })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: "Admin" })).toBeVisible();
-    await expect(menu.getByRole("menuitem", { name: "Log out" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Log Out" })).toBeVisible();
 
     const profileClass = await menu
       .getByRole("menuitem", { name: "Profile" })
       .evaluate((element) => element.getAttribute("class"));
     const logoutClass = await menu
-      .getByRole("menuitem", { name: "Log out" })
+      .getByRole("menuitem", { name: "Log Out" })
       .evaluate((element) => element.getAttribute("class"));
     const profileBox = await menu
       .getByRole("menuitem", { name: "Profile" })
       .boundingBox();
     const logoutBox = await menu
-      .getByRole("menuitem", { name: "Log out" })
+      .getByRole("menuitem", { name: "Log Out" })
       .boundingBox();
 
     expect(logoutClass).toBe(profileClass);

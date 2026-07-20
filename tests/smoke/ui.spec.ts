@@ -313,7 +313,7 @@ test("authenticated account menu uses one row pattern", async ({ page }) => {
 
   const profile = menu.getByRole("menuitem", { name: "Profile" });
   const legal = menu.getByRole("menuitem", { name: "Legal" });
-  const logout = menu.getByRole("menuitem", { name: "Log out" });
+  const logout = menu.getByRole("menuitem", { name: "Log Out" });
 
   await expect(profile).toBeVisible();
   await expect(legal).toBeVisible();

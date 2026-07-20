@@ -2252,6 +2252,24 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
   expect(statStyles).toHaveLength(4);
   expect(new Set(statStyles.map((stat) => stat.labelFontSize)).size).toBe(1);
   expect(new Set(statStyles.map((stat) => stat.valueFontSize)).size).toBe(1);
+  const statAlignment = await module
+    .getByTestId("profile-social-context")
+    .evaluate((element) => ({
+      flexWrap: window.getComputedStyle(element).flexWrap,
+      itemTops: Array.from(
+        element.querySelectorAll<HTMLElement>("[data-profile-info-stat]"),
+      ).map((stat) => Math.round(stat.getBoundingClientRect().top)),
+      labelTops: Array.from(
+        element.querySelectorAll<HTMLElement>("[data-profile-info-stat-label]"),
+      ).map((label) => Math.round(label.getBoundingClientRect().top)),
+      valueTops: Array.from(
+        element.querySelectorAll<HTMLElement>("[data-profile-info-stat-value]"),
+      ).map((value) => Math.round(value.getBoundingClientRect().top)),
+    }));
+  expect(statAlignment.flexWrap).toBe("nowrap");
+  expect(new Set(statAlignment.itemTops).size).toBe(1);
+  expect(new Set(statAlignment.labelTops).size).toBe(1);
+  expect(new Set(statAlignment.valueTops).size).toBe(1);
 
   const metrics = await page.evaluate(() => {
     const moduleElement = document.querySelector<HTMLElement>(
@@ -7294,7 +7312,7 @@ test("5x1 Connections fits three long chips without clipping", async ({ page }) 
   expect(metrics).toEqual({ containerOverflow: false, clippedLinks: false });
 });
 
-test("narrow Connections uses its available icon rows", async ({
+test("2x3 Stack Connections renders a vertical platform identity list", async ({
   page,
 }) => {
   await mockProfileModules(page, {
@@ -7319,13 +7337,25 @@ test("narrow Connections uses its available icon rows", async ({
   await page.goto("/@thia");
 
   const links = page.getByTestId("profile-module-links");
-  await expect(links.locator('[data-profile-connections-compact="icon-grid"]')).toBeVisible();
-  await expect(links.locator("[data-profile-module-visible-links]")).toHaveAttribute(
+  const stack = links.locator('[data-profile-connections-compact="dense-rows"]');
+  await expect(stack).toBeVisible();
+  await expect(stack).toHaveAttribute(
     "data-profile-module-visible-links",
     "5",
   );
-  await expect(links.getByRole("link")).toHaveCount(5);
+  await expect(stack.getByRole("link")).toHaveCount(5);
   await expect(links.getByTestId("profile-connections-overflow-count")).toHaveCount(0);
+  const github = stack.locator('a[href="https://github.com/thiabun"]');
+  const website = stack.locator('a[href^="https://thia.lol"]');
+  await expect(github).toContainText("GitHub");
+  await expect(github).toContainText("@thiabun");
+  await expect(website).toContainText("Website");
+  await expect(website).toContainText("thia.lol");
+  const geometry = await stack.getByRole("link").evaluateAll((items) => ({
+    columns: new Set(items.map((item) => Math.round(item.getBoundingClientRect().left))).size,
+    rows: new Set(items.map((item) => Math.round(item.getBoundingClientRect().top))).size,
+  }));
+  expect(geometry).toEqual({ columns: 1, rows: 5 });
 });
 
 for (const connectionOverflowCase of [
@@ -9472,7 +9502,7 @@ const profileModuleConnectionsAuditExpectations: Record<
   { hidden: number; variant: string; visible: number }
 > = {
   "2x2": { hidden: 0, variant: "icon-grid", visible: 10 },
-  "2x3": { hidden: 0, variant: "icon-grid", visible: 10 },
+  "2x3": { hidden: 5, variant: "dense-rows", visible: 5 },
   "3x2": { hidden: 7, variant: "dense-rows", visible: 3 },
   "4x2": { hidden: 5, variant: "dense-rows", visible: 5 },
   "3x3": { hidden: 5, variant: "dense-rows", visible: 5 },
@@ -10281,7 +10311,9 @@ async function expectAuditModuleContent(
   }
 
   if (type === "links" || type === "connections") {
-    await expect(module.locator('[title="Long connection label 1"]')).toBeVisible();
+    await expect(
+      module.locator('[title*="Long connection label 1"]'),
+    ).toBeVisible();
     return;
   }
 

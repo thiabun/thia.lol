@@ -1122,7 +1122,7 @@ function AccountMenu({ onWhatsNewOpen }: { onWhatsNewOpen: OpenWhatsNew }) {
                   }}
                 >
                   <LogOut aria-hidden="true" size={16} />
-                  Log out
+                  Log Out
                 </AccountMenuItem>
               </>
             ) : (

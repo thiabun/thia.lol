@@ -1136,6 +1136,7 @@ function ProfileModuleContent({
         : connectionLayout.capacity;
     const visibleLinks = links.slice(0, visibleCapacity);
     const hiddenCount = Math.max(0, links.length - visibleLinks.length);
+    const renderedSlotCount = visibleLinks.length + (hiddenCount > 0 ? 1 : 0);
 
     if (presentationMode === "mobile-stack") {
       return (
@@ -1218,7 +1219,7 @@ function ProfileModuleContent({
           gridTemplateColumns: `repeat(${connectionLayout.columns}, minmax(0, 1fr))`,
           gridTemplateRows: `repeat(${Math.max(
             1,
-            Math.ceil(visibleLinks.length / connectionLayout.columns),
+            Math.ceil(renderedSlotCount / connectionLayout.columns),
           )}, minmax(0, 1fr))`,
         }}
       >
@@ -1747,7 +1748,7 @@ const profileModuleConnectionLayouts: Partial<
   Record<ProfileGridModuleSize, ProfileModuleConnectionLayout>
 > = {
   "2x2": { capacity: 16, columns: 4, variant: "icons" },
-  "2x3": { capacity: 24, columns: 4, variant: "icons" },
+  "2x3": { capacity: 6, columns: 1, variant: "rows" },
   "3x2": { capacity: 4, columns: 2, variant: "rows" },
   "4x2": { capacity: 6, columns: 3, variant: "rows" },
   "3x3": { capacity: 6, columns: 2, variant: "rows" },
@@ -1780,18 +1781,26 @@ function ProfileModuleLinkCompactRow({
   link: ProfileModuleLink;
 }) {
   const platform = normalizeModuleConnectionPlatform(link.platform);
-  const label = link.label || moduleLinkPlatformLabel(link);
+  const platformLabel = moduleLinkPlatformLabel(link);
+  const label = platform ? platformLabel : link.label || platformLabel;
+  const identity = profileModuleConnectionIdentity(link, platformLabel);
+  const secondaryIdentity =
+    identity && identity.toLocaleLowerCase() !== label.toLocaleLowerCase()
+      ? identity
+      : undefined;
 
   return (
     <a
       className={cn(
         "group flex min-w-0 items-center overflow-hidden rounded-card border border-line bg-canvas/30 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/64 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-        dense ? "h-full min-h-0 gap-1.5 px-1.5 text-xs" : "min-h-10 gap-2 px-2 text-sm",
+        dense
+          ? "h-full min-h-9 gap-2 px-2 py-1 text-xs"
+          : "min-h-11 gap-2 px-2 py-1.5 text-sm",
       )}
       href={link.url}
       rel="noopener noreferrer"
       target="_blank"
-      title={label}
+      title={secondaryIdentity ? `${label}: ${secondaryIdentity}` : label}
     >
       <span
         className={cn(
@@ -1805,8 +1814,24 @@ function ProfileModuleLinkCompactRow({
           <Globe aria-hidden="true" size={dense ? 13 : 15} />
         )}
       </span>
-      <span className="min-w-0 flex-1 truncate font-semibold text-text">
-        {label}
+      <span className="flex min-w-0 flex-1 flex-col justify-center overflow-hidden">
+        <span
+          className="truncate font-semibold leading-tight text-text"
+          data-profile-connection-platform={platform ?? "custom"}
+        >
+          {label}
+        </span>
+        {secondaryIdentity ? (
+          <span
+            className={cn(
+              "truncate font-medium leading-tight text-muted",
+              dense ? "text-[0.65rem]" : "text-xs",
+            )}
+            data-profile-connection-identity={platform ?? "custom"}
+          >
+            {secondaryIdentity}
+          </span>
+        ) : null}
       </span>
       <ExternalLink
         aria-hidden="true"
@@ -4746,6 +4771,112 @@ function moduleLinkPlatformLabel(link: ProfileModuleLink): string {
   }
 
   return platformDisplayName(link.platform ?? "custom");
+}
+
+function profileModuleConnectionIdentity(
+  link: ProfileModuleLink,
+  platformLabel: string,
+): string | undefined {
+  const platform = normalizeModuleConnectionPlatform(link.platform);
+  const configuredLabel = link.label.trim();
+  const configuredIdentity =
+    configuredLabel &&
+    configuredLabel.toLocaleLowerCase() !== platformLabel.toLocaleLowerCase()
+      ? configuredLabel
+      : undefined;
+
+  try {
+    const url = new URL(link.url);
+    const host = url.hostname.replace(/^www\./, "");
+    const segments = url.pathname
+      .split("/")
+      .filter(Boolean)
+      .map(decodeModuleLinkSegment);
+    const first = segments[0];
+    const second = segments[1];
+    const handle = (value: string | undefined) => {
+      const normalized = value?.replace(/^@/, "").trim();
+
+      return normalized ? `@${normalized}` : undefined;
+    };
+
+    if (!platform) {
+      return moduleLinkPreview(link.url) || configuredIdentity;
+    }
+
+    if (platform === "website") {
+      return configuredIdentity ?? host;
+    }
+
+    if (!profileModuleConnectionHostMatches(platform, host)) {
+      return configuredIdentity ?? moduleLinkPreview(link.url);
+    }
+
+    if (["github", "instagram", "twitch", "x"].includes(platform)) {
+      return handle(first) ?? configuredIdentity;
+    }
+
+    if (platform === "tiktok") {
+      return handle(first) ?? configuredIdentity;
+    }
+
+    if (platform === "bluesky") {
+      return handle(first === "profile" ? second : first) ?? configuredIdentity;
+    }
+
+    if (platform === "youtube") {
+      if (first?.startsWith("@")) {
+        return handle(first);
+      }
+
+      if (first === "user" || first === "c") {
+        return handle(second) ?? configuredIdentity;
+      }
+
+      return configuredIdentity ?? (first === "channel" ? second : undefined);
+    }
+
+    if (platform === "spotify") {
+      return configuredIdentity ?? (first === "user" ? second : segments.at(-1));
+    }
+
+    return configuredIdentity ?? moduleLinkPreview(link.url);
+  } catch {
+    return configuredIdentity;
+  }
+}
+
+function decodeModuleLinkSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function profileModuleConnectionHostMatches(
+  platform: string,
+  host: string,
+): boolean {
+  const platformHosts: Partial<Record<string, string[]>> = {
+    bluesky: ["bsky.app"],
+    github: ["github.com"],
+    instagram: ["instagram.com"],
+    spotify: ["open.spotify.com"],
+    tiktok: ["tiktok.com"],
+    twitch: ["twitch.tv"],
+    x: ["x.com", "twitter.com"],
+    youtube: ["youtube.com", "youtu.be"],
+  };
+  const expectedHosts = platformHosts[platform];
+
+  return (
+    !expectedHosts ||
+    expectedHosts.some(
+      (expectedHost) =>
+        host === expectedHost || host.endsWith(`.${expectedHost}`),
+    )
+  );
 }
 
 function platformDisplayName(platform: string): string {

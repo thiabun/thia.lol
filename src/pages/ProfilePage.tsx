@@ -4517,7 +4517,7 @@ function ProfileInfoStats({
         "min-w-0 shrink-0 overflow-hidden",
         compact
           ? "grid grid-cols-2 items-end gap-x-1 gap-y-1"
-          : "flex flex-wrap items-center gap-x-3 gap-y-1",
+          : "flex w-full flex-nowrap items-center justify-between gap-x-2",
       )}
       data-profile-info-stats-variant={compact ? "compact" : "row"}
       data-testid="profile-social-context"
@@ -4555,7 +4555,7 @@ function ProfileInfoStats({
         );
         const className = compact
           ? "block min-w-0 rounded-control py-0.5 text-left leading-none transition duration-fluid ease-fluid"
-          : "inline-flex min-w-0 items-baseline gap-1.5 whitespace-nowrap rounded-control py-0.5 leading-none transition duration-fluid ease-fluid";
+          : "inline-flex min-h-11 min-w-0 items-center gap-1.5 whitespace-nowrap rounded-control py-0.5 leading-none transition duration-fluid ease-fluid";
 
         if (stat.panel) {
           const panel = stat.panel;
