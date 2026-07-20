@@ -4517,7 +4517,7 @@ function ProfileInfoStats({
         "min-w-0 shrink-0 overflow-hidden",
         compact
           ? "grid grid-cols-2 items-end gap-x-1 gap-y-1"
-          : "flex w-full flex-nowrap items-center justify-between gap-x-2",
+          : "flex w-full flex-nowrap items-center justify-start gap-x-4 sm:gap-x-6",
       )}
       data-profile-info-stats-variant={compact ? "compact" : "row"}
       data-testid="profile-social-context"

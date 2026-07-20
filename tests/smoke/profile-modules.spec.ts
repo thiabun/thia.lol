@@ -2254,19 +2254,31 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
   expect(new Set(statStyles.map((stat) => stat.valueFontSize)).size).toBe(1);
   const statAlignment = await module
     .getByTestId("profile-social-context")
-    .evaluate((element) => ({
-      flexWrap: window.getComputedStyle(element).flexWrap,
-      itemTops: Array.from(
+    .evaluate((element) => {
+      const itemRects = Array.from(
         element.querySelectorAll<HTMLElement>("[data-profile-info-stat]"),
-      ).map((stat) => Math.round(stat.getBoundingClientRect().top)),
-      labelTops: Array.from(
-        element.querySelectorAll<HTMLElement>("[data-profile-info-stat-label]"),
-      ).map((label) => Math.round(label.getBoundingClientRect().top)),
-      valueTops: Array.from(
-        element.querySelectorAll<HTMLElement>("[data-profile-info-stat-value]"),
-      ).map((value) => Math.round(value.getBoundingClientRect().top)),
-    }));
+      ).map((stat) => stat.getBoundingClientRect());
+
+      return {
+        flexWrap: window.getComputedStyle(element).flexWrap,
+        gaps: itemRects.slice(1).map((rect, index) =>
+          Math.round(rect.left - itemRects[index]!.right),
+        ),
+        itemTops: itemRects.map((rect) => Math.round(rect.top)),
+        justifyContent: window.getComputedStyle(element).justifyContent,
+        labelTops: Array.from(
+          element.querySelectorAll<HTMLElement>("[data-profile-info-stat-label]"),
+        ).map((label) => Math.round(label.getBoundingClientRect().top)),
+        valueTops: Array.from(
+          element.querySelectorAll<HTMLElement>("[data-profile-info-stat-value]"),
+        ).map((value) => Math.round(value.getBoundingClientRect().top)),
+      };
+    });
   expect(statAlignment.flexWrap).toBe("nowrap");
+  expect(statAlignment.justifyContent).toBe("flex-start");
+  expect(statAlignment.gaps).toHaveLength(3);
+  expect(Math.max(...statAlignment.gaps)).toBeLessThanOrEqual(28);
+  expect(Math.min(...statAlignment.gaps)).toBeGreaterThanOrEqual(16);
   expect(new Set(statAlignment.itemTops).size).toBe(1);
   expect(new Set(statAlignment.labelTops).size).toBe(1);
   expect(new Set(statAlignment.valueTops).size).toBe(1);
