@@ -1,5 +1,6 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 
+import type { IntegrationCardPayload } from "./integrations.js";
 import { initialsFromName, roomPayloadFromRow, type RoomPayload, type RoomRow, type UserPayload } from "./rooms.js";
 
 export interface ProfilesRepository {
@@ -9,6 +10,13 @@ export interface ProfilesRepository {
   getPublicProfileBadges(handle: string): Promise<ProfileBadgesPayload | null>;
   getPublicProfileFollowers(handle: string): Promise<FollowUserCardPayload[] | null>;
   getPublicProfileFollowing(handle: string): Promise<FollowUserCardPayload[] | null>;
+}
+
+export interface ProfileIntegrationsResolver {
+  resolvePublicMetadata(
+    rawUrl: string,
+    preferredProvider: string | null,
+  ): Promise<IntegrationCardPayload | null>;
 }
 
 export interface ProfilePayload {
@@ -831,14 +839,20 @@ export function buildProfileFollowListQuery(
         LIMIT 100`;
 }
 
-export function createProfilesRepository(pool: Pool): ProfilesRepository {
-  return new MysqlProfilesRepository(pool);
+export function createProfilesRepository(
+  pool: Pool,
+  integrationsResolver?: ProfileIntegrationsResolver,
+): ProfilesRepository {
+  return new MysqlProfilesRepository(pool, integrationsResolver);
 }
 
 class MysqlProfilesRepository implements ProfilesRepository {
   private capabilities?: Promise<ProfileSchemaCapabilities>;
 
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly integrationsResolver?: ProfileIntegrationsResolver,
+  ) {}
 
   async getPublicProfile(handle: string): Promise<ProfilePayload | null> {
     const capabilities = await this.schemaCapabilities();
@@ -1205,6 +1219,17 @@ class MysqlProfilesRepository implements ProfilesRepository {
 
     if (normalized === null) {
       return null;
+    }
+
+    if (this.integrationsResolver !== undefined) {
+      const card = await this.integrationsResolver.resolvePublicMetadata(
+        normalized.sourceUrl,
+        normalized.provider,
+      );
+
+      if (card !== null) {
+        return { ...card };
+      }
     }
 
     const [rows] = await this.pool.execute<ProfileIntegrationCacheRow[]>(

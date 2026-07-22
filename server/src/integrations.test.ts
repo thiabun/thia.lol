@@ -410,6 +410,120 @@ describe("integration OAuth music flows", () => {
   });
 });
 
+describe("public integration metadata", () => {
+  it("refreshes expired Twitch status with a short cache window", async () => {
+    const now = new Date("2026-07-22T04:30:00.000Z");
+    const cacheUpserts: unknown[][] = [];
+    const staleCacheRow = {
+      id: 64,
+      provider: "twitch",
+      resource_type: "channel",
+      resource_id: "thiabun",
+      resource_key: "twitch:channel:thiabun",
+      source_url: "https://www.twitch.tv/thiabun",
+      metadata_json: JSON.stringify({
+        title: "thiabun",
+        subtitle: "Twitch channel",
+        live: false,
+        liveFetchedAt: "2026-07-15T16:51:36.623Z",
+        stats: {},
+      }),
+      embed_json: null,
+      api_backed: 1,
+      fetched_at: "2026-07-15 16:51:36",
+      expires_at: "2026-07-15 17:51:36",
+      stale_at: "2026-07-16 16:51:36",
+      error_message: null,
+    };
+    const pool = {
+      execute: vi.fn(async (sql: string, params: readonly unknown[] = []) => {
+        if (sql.includes("information_schema.TABLES") || sql.includes("information_schema.COLUMNS")) {
+          return [[{ item_count: 1 }], []];
+        }
+
+        if (sql.includes("FROM profile_integration_metadata_cache")) {
+          return [[staleCacheRow], []];
+        }
+
+        if (sql.includes("INSERT INTO profile_integration_metadata_cache")) {
+          cacheUpserts.push(params);
+          return [[], []];
+        }
+
+        throw new Error(`Unexpected integration SQL: ${sql}`);
+      }),
+    };
+    const httpJson = vi.fn<IntegrationHttpJson>(async (method, url) => {
+      if (method === "POST" && url === "https://id.twitch.tv/oauth2/token") {
+        return {
+          access_token: "twitch-app-token",
+          expires_in: 3600,
+        };
+      }
+
+      if (method === "GET" && url === "https://api.twitch.tv/helix/users?login=thiabun") {
+        return {
+          data: [{
+            display_name: "thiabun",
+            description: "Live from the burrow.",
+            profile_image_url: "https://cdn.example.com/thiabun.webp",
+          }],
+        };
+      }
+
+      if (method === "GET" && url === "https://api.twitch.tv/helix/streams?user_login=thiabun") {
+        return {
+          data: [{
+            game_name: "Minecraft",
+            title: "Vinterra!",
+            viewer_count: 3,
+          }],
+        };
+      }
+
+      throw new Error(`Unexpected Twitch request: ${method} ${url}`);
+    });
+    const repository = createIntegrationsRepository(pool as unknown as Pool, {
+      publicBaseUrl: "https://thia.lol",
+      encryptionKey: "12345678901234567890123456789012",
+      providers: {
+        ...providers,
+        twitch: {
+          clientId: "twitch-client",
+          clientSecret: "twitch-secret",
+          embedParent: "thia.lol",
+        },
+      },
+      httpJson,
+      now: () => now,
+    });
+
+    const first = await repository.resolvePublicMetadata(
+      "https://www.twitch.tv/thiabun",
+      "twitch",
+    );
+    expect(first).toMatchObject({
+      provider: "twitch",
+      resourceType: "channel",
+      resourceId: "thiabun",
+      metadata: {
+        live: true,
+        liveFetchedAt: "2026-07-22T04:30:00.000Z",
+        recentLabel: "Vinterra!",
+        stats: {
+          game: "Minecraft",
+          viewers: 3,
+        },
+      },
+      apiBacked: true,
+      fetchedAt: "2026-07-22T04:30:00.000Z",
+      expiresAt: "2026-07-22T04:31:00.000Z",
+    });
+    expect(cacheUpserts).toHaveLength(1);
+    expect(cacheUpserts[0]?.[8]).toBe("2026-07-22 04:31:00");
+  });
+});
+
 function createTestRepository(pool: FakeIntegrationPool, httpJson?: IntegrationHttpJson) {
   return createIntegrationsRepository(pool as unknown as Pool, {
     publicBaseUrl: "https://thia.lol",

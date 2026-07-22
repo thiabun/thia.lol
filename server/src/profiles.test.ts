@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import type { Pool } from "mysql2/promise";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildProfileBadgesQuery,
@@ -7,6 +8,7 @@ import {
   buildPublicProfileModulesQuery,
   buildPublicProfileRoomsQuery,
   canonicalProfileModuleType,
+  createProfilesRepository,
   followUserCardPayloadFromRow,
   normalizeProfileHandle,
   profileBadgesPayloadFromRows,
@@ -19,6 +21,7 @@ import {
   supportedProfileModuleType,
   type FollowUserRow,
   type ProfileIntegrationCacheRow,
+  type ProfileIntegrationsResolver,
   type ProfileModuleRow,
   type ProfileRow,
   type ProfileSchemaCapabilities,
@@ -572,6 +575,106 @@ describe("profile preview SQL", () => {
 });
 
 describe("profile integration payloads", () => {
+  it("uses the integration resolver so public Twitch modules refresh expired live status", async () => {
+    const twitchModule = {
+      id: 64,
+      user_id: 1,
+      type: "twitch_channel",
+      title: "Live",
+      config_json: JSON.stringify({
+        canvasSize: "8x6",
+        displayMode: "stream_chat",
+        platform: "twitch",
+        url: "https://twitch.tv/thiabun",
+      }),
+      visibility: "public",
+      position: 2,
+      grid_column: 1,
+      grid_row: 4,
+      grid_col_span: 8,
+      grid_row_span: 6,
+      grid_pinned: 0,
+      status: "active",
+      schema_version: 1,
+      created_at: "2026-07-15 16:51:36",
+      updated_at: "2026-07-15 16:51:36",
+    } satisfies ProfileModuleRow;
+    const pool = {
+      execute: vi.fn(async (sql: string) => {
+        if (sql.includes("INFORMATION_SCHEMA.TABLES")) {
+          return [[{ table_count: 1 }], []];
+        }
+
+        if (sql.includes("INFORMATION_SCHEMA.COLUMNS")) {
+          return [[{ column_count: 1 }], []];
+        }
+
+        if (sql.includes("WHERE u.handle = ?")) {
+          return [[profileRow()], []];
+        }
+
+        if (sql.includes("FROM profile_modules") && sql.includes("visibility = 'public'")) {
+          return [[twitchModule], []];
+        }
+
+        throw new Error(`Unexpected profile SQL: ${sql}`);
+      }),
+    };
+    const resolvePublicMetadata = vi.fn<ProfileIntegrationsResolver["resolvePublicMetadata"]>()
+      .mockResolvedValue({
+        provider: "twitch",
+        resourceType: "channel",
+        resourceId: "thiabun",
+        resourceKey: "twitch:channel:thiabun",
+        sourceUrl: "https://www.twitch.tv/thiabun",
+        metadata: {
+          title: "thiabun",
+          subtitle: "Twitch channel",
+          description: null,
+          imageUrl: null,
+          live: true,
+          liveFetchedAt: "2026-07-22T04:30:00.000Z",
+          recentLabel: "Vinterra!",
+          recentFetchedAt: "2026-07-22T04:30:00.000Z",
+          stats: {
+            game: "Minecraft",
+            viewers: 3,
+          },
+        },
+        embed: {
+          type: "iframe",
+          src: "https://player.twitch.tv/?channel=thiabun&parent=thia.lol&muted=true&autoplay=false",
+          title: "Twitch embed",
+          allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+          height: 220,
+        },
+        apiBacked: true,
+        fetchedAt: "2026-07-22T04:30:00.000Z",
+        expiresAt: "2026-07-22T04:31:00.000Z",
+        staleAt: "2026-07-23T04:30:00.000Z",
+      });
+    const repository = createProfilesRepository(pool as unknown as Pool, {
+      resolvePublicMetadata,
+    });
+
+    const modules = await repository.getPublicProfileModules("thia");
+
+    expect(resolvePublicMetadata).toHaveBeenCalledWith(
+      "https://twitch.tv/thiabun",
+      "twitch",
+    );
+    expect(modules?.find((module) => module.type === "twitch_channel")?.config)
+      .toMatchObject({
+        integration: {
+          provider: "twitch",
+          metadata: {
+            live: true,
+            liveFetchedAt: "2026-07-22T04:30:00.000Z",
+          },
+        },
+      });
+  });
+
   it("generates YouTube iframe embeds when cached rows have empty embed JSON", () => {
     const payload = profileIntegrationCachePayload({
       provider: "youtube",

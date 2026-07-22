@@ -14,6 +14,7 @@ export const integrationProviders = ["spotify", "apple_music", "youtube", "twitc
 export type IntegrationProvider = (typeof integrationProviders)[number];
 
 const integrationTtlSeconds = 3600;
+const twitchIntegrationTtlSeconds = 60;
 const integrationStaleSeconds = 86400;
 const oauthStateSeconds = 600;
 const opensslPrefix = "openssl:";
@@ -80,6 +81,7 @@ export interface IntegrationsRepository {
   disconnect(session: RequestSession, provider: string): Promise<IntegrationOwnerPayload>;
   suggestions(session: RequestSession, provider: string): Promise<IntegrationSuggestionsPayload>;
   resolveMetadata(session: RequestSession, body: Record<string, unknown>): Promise<IntegrationCardPayload>;
+  resolvePublicMetadata(rawUrl: string, preferredProvider: string | null): Promise<IntegrationCardPayload | null>;
 }
 
 export interface IntegrationProviderStatusPayload {
@@ -506,6 +508,15 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
     return card;
   }
 
+  async resolvePublicMetadata(
+    rawUrl: string,
+    preferredProvider: string | null,
+  ): Promise<IntegrationCardPayload | null> {
+    const provider = preferredProvider === null ? null : providerFromInput(preferredProvider);
+
+    return this.resolveUrl(rawUrl, provider, null);
+  }
+
   private async ownerPayload(userId: number): Promise<IntegrationOwnerPayload> {
     return {
       providers: integrationProviders.map((provider) => this.providerStatus(provider)),
@@ -856,6 +867,7 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
     apiBacked: boolean,
   ): IntegrationCardPayload {
     const now = this.now();
+    const ttlSeconds = integrationCacheTtlSeconds(normalized.provider);
 
     return {
       provider: normalized.provider,
@@ -867,7 +879,7 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
       embed,
       apiBacked,
       fetchedAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + integrationTtlSeconds * 1000).toISOString(),
+      expiresAt: new Date(now.getTime() + ttlSeconds * 1000).toISOString(),
       staleAt: new Date(now.getTime() + integrationStaleSeconds * 1000).toISOString(),
     };
   }
@@ -1409,7 +1421,9 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
   }
 
   private async cacheUpsert(card: IntegrationCardPayload, error: string | null): Promise<void> {
-    const expiresAt = sqlDate(new Date(this.now().getTime() + integrationTtlSeconds * 1000));
+    const expiresAt = sqlDate(new Date(
+      this.now().getTime() + integrationCacheTtlSeconds(card.provider) * 1000,
+    ));
     const staleAt = sqlDate(new Date(this.now().getTime() + integrationStaleSeconds * 1000));
 
     await this.pool.execute(
@@ -2072,6 +2086,10 @@ function cacheIsFresh(row: IntegrationCacheRow, now: Date): boolean {
   const time = Date.parse(`${row.expires_at ?? ""}Z`);
 
   return Number.isFinite(time) && time > now.getTime();
+}
+
+function integrationCacheTtlSeconds(provider: IntegrationProvider): number {
+  return provider === "twitch" ? twitchIntegrationTtlSeconds : integrationTtlSeconds;
 }
 
 function normalizeMetadata(value: Record<string, unknown>): IntegrationMetadataPayload {

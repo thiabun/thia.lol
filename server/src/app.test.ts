@@ -1009,6 +1009,7 @@ function integrationsRepositoryMock(overrides: Partial<IntegrationsRepository> =
     disconnect: vi.fn().mockResolvedValue(integrationOwnerPayload),
     suggestions: vi.fn().mockResolvedValue(integrationSuggestionsPayload),
     resolveMetadata: vi.fn().mockResolvedValue(integrationCardPayload),
+    resolvePublicMetadata: vi.fn().mockResolvedValue(integrationCardPayload),
     ...overrides,
   };
 }

@@ -99,7 +99,7 @@ const privateReadsRepository = createPrivateReadsRepository(database.pool, {
   encryptionConfigured: config.THIA_SECURITY_ENCRYPTION_CONFIGURED,
   encryptionAvailable: config.THIA_SECURITY_ENCRYPTION_AVAILABLE,
 });
-const profilesRepository = createProfilesRepository(database.pool);
+const profilesRepository = createProfilesRepository(database.pool, integrationsRepository);
 const pushRepository = createPushRepository(database.pool, {
   publicKey: config.THIA_PUSH_VAPID_PUBLIC_KEY,
   privateKey: config.THIA_PUSH_VAPID_PRIVATE_KEY,
