@@ -1,1 +1,1 @@
-export const shareCardCacheVersion = "screenshot-v8";
+export const shareCardCacheVersion = "screenshot-v9";

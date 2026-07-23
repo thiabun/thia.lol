@@ -53,7 +53,7 @@ describe("share shell service", () => {
     const { service, uploadRoot } = await shareShellFixture();
     const cacheDirectory = path.join(uploadRoot, "share-cards", "posts");
     await mkdir(cacheDirectory, { recursive: true });
-    await writeFile(path.join(cacheDirectory, "pc359fe2da759-screenshot-v8.jpg"), "jpeg");
+    await writeFile(path.join(cacheDirectory, "pc359fe2da759-screenshot-v9.jpg"), "jpeg");
 
     const response = await service.postShare({
       handle: "thia",
@@ -66,7 +66,7 @@ describe("share shell service", () => {
       return;
     }
 
-    expect(metaContent(response.html, "og:image")).toContain("/uploads/share-cards/posts/pc359fe2da759-screenshot-v8.jpg");
+    expect(metaContent(response.html, "og:image")).toContain("/uploads/share-cards/posts/pc359fe2da759-screenshot-v9.jpg");
     expect(metaContent(response.html, "og:image:type")).toBe("image/jpeg");
     expect(metaContent(response.html, "og:image")).not.toContain("/api/posts/pc359fe2da759/share-card.png");
   });
@@ -89,11 +89,11 @@ describe("share shell service", () => {
     expect(metaContent(response.html, "og:image:type")).toBe("image/jpeg");
   });
 
-  it("ignores legacy v6 profile cards when the current artifact is missing", async () => {
+  it("ignores the prior v8 profile card when the current artifact is missing", async () => {
     const { service, uploadRoot } = await shareShellFixture();
     const cacheDirectory = path.join(uploadRoot, "share-cards", "profiles");
     await mkdir(cacheDirectory, { recursive: true });
-    await writeFile(path.join(cacheDirectory, "thia-screenshot-v6.jpg"), "legacy jpeg");
+    await writeFile(path.join(cacheDirectory, "thia-screenshot-v8.jpg"), "legacy jpeg");
 
     const response = await service.profileShare({ handle: "thia" });
 
@@ -104,16 +104,16 @@ describe("share shell service", () => {
     }
 
     expect(metaContent(response.html, "og:image")).toContain("/api/profiles/thia/share-card.png");
-    expect(metaContent(response.html, "og:image")).not.toContain("screenshot-v6");
+    expect(metaContent(response.html, "og:image")).not.toContain("screenshot-v8");
     expect(metaContent(response.html, "og:image:type")).toBe("image/jpeg");
   });
 
-  it("selects the v7 profile card even when a legacy v6 artifact remains", async () => {
+  it("selects the v9 profile card even when the prior v8 artifact remains", async () => {
     const { service, uploadRoot } = await shareShellFixture();
     const cacheDirectory = path.join(uploadRoot, "share-cards", "profiles");
     await mkdir(cacheDirectory, { recursive: true });
-    await writeFile(path.join(cacheDirectory, "thia-screenshot-v6.jpg"), "legacy jpeg");
-    await writeFile(path.join(cacheDirectory, "thia-screenshot-v8.jpg"), "current jpeg");
+    await writeFile(path.join(cacheDirectory, "thia-screenshot-v8.jpg"), "prior jpeg");
+    await writeFile(path.join(cacheDirectory, "thia-screenshot-v9.jpg"), "current jpeg");
 
     const response = await service.profileShare({ handle: "thia" });
 
@@ -123,14 +123,14 @@ describe("share shell service", () => {
       return;
     }
 
-    expect(metaContent(response.html, "og:image")).toContain("/uploads/share-cards/profiles/thia-screenshot-v8.jpg");
-    expect(metaContent(response.html, "og:image")).not.toContain("screenshot-v6");
+    expect(metaContent(response.html, "og:image")).toContain("/uploads/share-cards/profiles/thia-screenshot-v9.jpg");
+    expect(metaContent(response.html, "og:image")).not.toContain("screenshot-v8");
   });
 
   it("changes the profile card cache buster for writes within the same second", async () => {
     const { service, uploadRoot } = await shareShellFixture();
     const cacheDirectory = path.join(uploadRoot, "share-cards", "profiles");
-    const cachePath = path.join(cacheDirectory, "thia-screenshot-v8.jpg");
+    const cachePath = path.join(cacheDirectory, "thia-screenshot-v9.jpg");
     await mkdir(cacheDirectory, { recursive: true });
     await writeFile(cachePath, "current jpeg");
     await utimes(cachePath, new Date("2026-07-13T12:00:00.100Z"), new Date("2026-07-13T12:00:00.100Z"));

@@ -53,7 +53,7 @@ type SharePalette = {
   text: string;
 };
 
-const SHARE_CARD_RENDER_VERSION = "screenshot-v8";
+const SHARE_CARD_RENDER_VERSION = "screenshot-v9";
 const PROFILE_SHARE_CANVAS_SCALE = 0.75;
 const PROFILE_SHARE_CANVAS_WIDTH = 1536;
 

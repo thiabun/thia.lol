@@ -24,7 +24,7 @@ test("profile share render uses the real profile canvas treatments and modules",
   await expect(shareCanvas).toBeVisible();
   await expect(shareCanvas).toHaveAttribute(
     "data-share-card-render-version",
-    "screenshot-v8",
+    "screenshot-v9",
   );
   await expect(page.locator("[data-share-card-brand]")).toHaveCSS(
     "height",
@@ -136,10 +136,11 @@ test("profile share render uses the real profile canvas treatments and modules",
   );
   await expect(appleMusicModule).toContainText("Afterglow");
   await expect(
-    appleMusicModule.locator(
-      "[data-profile-capture-embed-fallback='apple_music']",
-    ),
-  ).toBeVisible();
+    appleMusicModule.getByRole("link", { name: "Afterglow Apple Music" }),
+  ).toHaveAttribute(
+    "href",
+    "https://music.apple.com/us/song/afterglow/123456789",
+  );
   await expect(appleMusicModule.locator("iframe")).toHaveCount(0);
 
   const twitchModule = page.getByTestId("profile-grid-module-twitch_channel");

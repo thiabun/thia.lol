@@ -59,7 +59,7 @@ describe("share card service", () => {
     expect(image.contentType).toBe("image/jpeg");
     expect(image.body.byteLength).toBeGreaterThan(0);
     expect(renderer.render).toHaveBeenCalledWith("https://thia.test/share-render/post/pc359fe2da759");
-    expect(existsSync(path.join(uploadRoot, "share-cards", "posts", "pc359fe2da759-screenshot-v8.jpg"))).toBe(true);
+    expect(existsSync(path.join(uploadRoot, "share-cards", "posts", "pc359fe2da759-screenshot-v9.jpg"))).toBe(true);
   });
 
   it("renders missing profile share cards through the frontend screenshot renderer", async () => {
@@ -70,22 +70,22 @@ describe("share card service", () => {
     expect(image.contentType).toBe("image/jpeg");
     expect(image.body.byteLength).toBeGreaterThan(0);
     expect(renderer.render).toHaveBeenCalledWith("https://thia.test/share-render/profile/thia");
-    expect(existsSync(path.join(uploadRoot, "share-cards", "profiles", "thia-screenshot-v8.jpg"))).toBe(true);
+    expect(existsSync(path.join(uploadRoot, "share-cards", "profiles", "thia-screenshot-v9.jpg"))).toBe(true);
   });
 
-  it("ignores legacy v6 profile cards and writes the current screenshot artifact", async () => {
+  it("ignores the prior v8 profile card and writes the current screenshot artifact", async () => {
     const { renderer, service, uploadRoot } = await shareCardServiceFixture();
     const cacheDirectory = path.join(uploadRoot, "share-cards", "profiles");
     await mkdir(cacheDirectory, { recursive: true });
     await writeFile(
-      path.join(cacheDirectory, "thia-screenshot-v6.jpg"),
+      path.join(cacheDirectory, "thia-screenshot-v8.jpg"),
       await testShareCardJpeg(),
     );
 
     await service.profileCard("thia");
 
     expect(renderer.render).toHaveBeenCalledOnce();
-    expect(existsSync(path.join(cacheDirectory, "thia-screenshot-v8.jpg"))).toBe(true);
+    expect(existsSync(path.join(cacheDirectory, "thia-screenshot-v9.jpg"))).toBe(true);
   });
 
   it("refreshes profile cards even when a cached frontend screenshot already exists", async () => {
@@ -109,7 +109,7 @@ describe("share card service", () => {
     await expect(service.refreshProfileCard("thia")).resolves.toBeNull();
 
     expect(existsSync(path.join(cacheDirectory, "thia-screenshot-v6.jpg"))).toBe(false);
-    expect(existsSync(path.join(cacheDirectory, "thia-screenshot-v8.jpg"))).toBe(false);
+    expect(existsSync(path.join(cacheDirectory, "thia-screenshot-v9.jpg"))).toBe(false);
   });
 
   it("purges current and legacy post cards when a post is no longer public", async () => {
@@ -123,7 +123,7 @@ describe("share card service", () => {
     await expect(service.refreshPostCard("pc359fe2da759", null)).resolves.toBeNull();
 
     expect(existsSync(path.join(cacheDirectory, "pc359fe2da759-screenshot-v6.png"))).toBe(false);
-    expect(existsSync(path.join(cacheDirectory, "pc359fe2da759-screenshot-v8.jpg"))).toBe(false);
+    expect(existsSync(path.join(cacheDirectory, "pc359fe2da759-screenshot-v9.jpg"))).toBe(false);
   });
 
   it("runs a trailing forced render when another refresh arrives in flight", async () => {
@@ -166,7 +166,7 @@ describe("share card service", () => {
     await expect(publicRefresh).rejects.toMatchObject({ statusCode: 404 });
     await expect(privacyRefresh).resolves.toBeNull();
     expect(existsSync(path.join(cacheDirectory, "thia-screenshot-v6.jpg"))).toBe(false);
-    expect(existsSync(path.join(cacheDirectory, "thia-screenshot-v8.jpg"))).toBe(false);
+    expect(existsSync(path.join(cacheDirectory, "thia-screenshot-v9.jpg"))).toBe(false);
   });
 });
 
