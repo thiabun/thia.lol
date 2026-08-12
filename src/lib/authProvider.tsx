@@ -40,6 +40,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       current
         ? {
             ...current,
+            user:
+              typeof patch.displayName === "string"
+                ? { ...current.user, displayName: patch.displayName }
+                : current.user,
             profile: {
               ...current.profile,
               ...patch,

@@ -501,6 +501,17 @@ work should use the current constrained model and real backend/API persistence.
 Auth pages should orient people quickly. If someone is already signed in, show
 the current account state clearly and keep forms secondary or out of the way.
 
+Identity terminology must stay consistent across authentication, onboarding,
+profiles, editing, settings, and account management:
+
+- `Display Name` is the public name shown on posts, profiles, chats, and other
+  social surfaces. It does not need to be unique.
+- `Handle` is the unique `@username`, canonical profile URL, and account
+  identifier. Handle formatting, availability, reservations, and changes must
+  use the authoritative Node API rules.
+- Sign-in accepts an Email or Handle. A Display Name is public presentation,
+  not a sign-in identifier.
+
 Legal and trust pages can carry more text, but their index should stay scannable
 with clear categories and direct policy links.
 

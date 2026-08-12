@@ -47,13 +47,15 @@ export type TwoFactorLoginChallenge = {
 export type LoginResult = AuthSession | TwoFactorLoginChallenge;
 
 export type LoginInput = {
-  email: string;
+  identifier: string;
   password: string;
 };
 
-export type RegisterInput = LoginInput & {
+export type RegisterInput = {
+  email: string;
   handle: string;
   displayName: string;
+  password: string;
   attribution?: GrowthAttribution;
 };
 

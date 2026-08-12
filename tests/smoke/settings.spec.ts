@@ -13,6 +13,8 @@ test("settings separates readouts and confirms bulk content deletion", async ({
   });
 
   const account = page.locator("#account");
+  await expect(account.getByText("Display Name", { exact: true })).toBeVisible();
+  await expect(account.getByText("Viewer", { exact: true })).toBeVisible();
   await expect(account.getByTestId("settings-readout-email")).toContainText(
     "viewer@example.test",
   );
@@ -25,10 +27,19 @@ test("settings separates readouts and confirms bulk content deletion", async ({
   await expect(account.getByText("Change handle")).toHaveCount(0);
   const emailEdit = account.getByRole("button", { name: "Change email" });
   const handleEdit = account.getByRole("button", { name: "Change handle" });
+  const displayNameEdit = account.getByRole("link", {
+    name: "Open profile editor",
+  });
+  await expect(displayNameEdit).toHaveAttribute(
+    "href",
+    "/@viewer?editCanvas=1",
+  );
   await expect(emailEdit).toBeVisible();
   await expect(handleEdit).toBeVisible();
-  await expectCircularIconButton(emailEdit);
-  await expectCircularIconButton(handleEdit);
+  for (const editControl of [displayNameEdit, emailEdit, handleEdit]) {
+    await expectCircularIconButton(editControl);
+    await expectTouchTarget(editControl);
+  }
   await expect(page.getByText("Follow requests")).toHaveCount(0);
   await expect(page.getByText("5/5 enabled")).toHaveCount(0);
 
@@ -110,6 +121,13 @@ async function expectCircularIconButton(locator: Locator) {
 
   expect(Math.abs(metrics.width - metrics.height)).toBeLessThanOrEqual(2);
   expect(metrics.radius).toBeGreaterThanOrEqual(metrics.height / 2 - 1);
+}
+
+async function expectTouchTarget(locator: Locator) {
+  const box = await locator.boundingBox();
+
+  expect(box?.width).toBeGreaterThanOrEqual(44);
+  expect(box?.height).toBeGreaterThanOrEqual(44);
 }
 
 async function mockAuthenticatedSettingsShell(page: Page) {

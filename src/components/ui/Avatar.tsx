@@ -5,6 +5,7 @@ type AvatarProps = {
   user: Pick<User, "displayName" | "initials" | "aura" | "avatarUrl">;
   size?: "sm" | "md" | "lg";
   className?: string;
+  accessibleLabel?: string;
 };
 
 const sizes = {
@@ -20,11 +21,16 @@ const auras: Record<string, string> = {
   tide: "from-leaf via-cool to-surface",
 };
 
-export function Avatar({ user, size = "md", className }: AvatarProps) {
+export function Avatar({
+  user,
+  size = "md",
+  className,
+  accessibleLabel = user.displayName,
+}: AvatarProps) {
   if (user.avatarUrl) {
     return (
       <img
-        alt={user.displayName}
+        alt={accessibleLabel}
         className={cn(
           "shrink-0 rounded-full border border-white/35 bg-surface object-cover shadow-soft",
           sizes[size],
@@ -37,7 +43,7 @@ export function Avatar({ user, size = "md", className }: AvatarProps) {
 
   return (
     <div
-      aria-label={user.displayName}
+      aria-label={accessibleLabel}
       role="img"
       className={cn(
         "grid shrink-0 place-items-center rounded-full border border-white/35 bg-gradient-to-br text-text shadow-soft",
@@ -45,7 +51,7 @@ export function Avatar({ user, size = "md", className }: AvatarProps) {
         auras[user.aura] ?? auras.tide,
         className,
       )}
-      title={user.displayName}
+      title={accessibleLabel}
     >
       <span className="font-semibold">{user.initials}</span>
     </div>

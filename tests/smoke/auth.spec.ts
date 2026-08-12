@@ -30,6 +30,42 @@ test.describe("authenticated smoke", () => {
     }
   });
 
+  test("the same account can sign in with its Handle", async ({ page }) => {
+    const emailSession = await loginWithEnv(page);
+    const { email, password } = getTestCredentials();
+    const handle = emailSession.data?.user?.handle;
+
+    expect(handle).toEqual(expect.any(String));
+    expect(email).toEqual(expect.any(String));
+    expect(password).toEqual(expect.any(String));
+
+    await page.getByRole("button", { name: /account menu/i }).click();
+    await page.getByRole("menuitem", { name: "Log Out" }).click();
+
+    await page.goto("/login");
+    await page.getByLabel("Email or Handle").fill(`@${handle}`);
+    await page
+      .getByRole("textbox", { name: "Password", exact: true })
+      .fill(password!);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL("/", { timeout: 15_000 });
+
+    await expect
+      .poll(() => fetchAuthMe(page), {
+        message: "/api/auth/me should return the Handle-authenticated user",
+        timeout: 15_000,
+      })
+      .toMatchObject({
+        ok: true,
+        data: {
+          user: {
+            email,
+            handle,
+          },
+        },
+      });
+  });
+
   test("account menu shows authenticated actions for admin user", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     const session = await loginWithEnv(page);

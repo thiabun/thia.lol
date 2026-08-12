@@ -23,6 +23,7 @@ import {
 import { Navigate, useNavigate, useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { DesktopNotificationsCard } from "../components/notifications/DesktopNotificationsCard";
+import { IdentityPreview } from "../components/social/IdentityPreview";
 import { ProfileConnectionIcon } from "../components/social/ProfileConnectionIcon";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Button, ButtonLink } from "../components/ui/Button";
@@ -319,7 +320,7 @@ export function OnboardingPage() {
   }
 
   if (status === "anonymous") {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login?returnTo=%2Fonboarding" replace />;
   }
 
   async function updateStep(
@@ -544,6 +545,8 @@ export function OnboardingPage() {
                 {activeStep === "profile_basics" ? (
                   <ProfileBasicsStep
                     busyAction={busyAction}
+                    displayName={user?.displayName ?? ""}
+                    handle={user?.handle ?? ""}
                     profileTourUrl={profileTourUrl}
                     onSkip={() =>
                       void updateStep(
@@ -720,16 +723,32 @@ function OnboardingProgressRail({
 
 function ProfileBasicsStep({
   busyAction,
+  displayName,
+  handle,
   onSkip,
   profileTourUrl,
 }: {
   busyAction: string | undefined;
+  displayName: string;
+  handle: string;
   onSkip: () => void;
   profileTourUrl: string;
 }) {
   return (
     <StepScaffold
       title="Profile basics"
+      body={
+        <div
+          className="border-y border-line bg-canvas/35 py-4"
+          data-testid="onboarding-identity-preview"
+        >
+          <IdentityPreview displayName={displayName} handle={handle} />
+          <p className="mt-3 text-xs leading-5 text-muted">
+            Your Display Name is what people see. Your unique Handle is your
+            @username and profile address.
+          </p>
+        </div>
+      }
       footer={
         <WizardActions
           back={undefined}

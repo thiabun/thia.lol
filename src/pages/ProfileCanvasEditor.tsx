@@ -4122,7 +4122,7 @@ function ModuleSettingsModal({
               </div>
               <label className="block">
                 <span className="text-xs font-semibold uppercase text-muted">
-                  Display name
+                  Display Name
                 </span>
                 <input
                   className="mt-1 min-h-11 w-full rounded-control border border-line bg-canvas/45 px-3 text-sm font-semibold text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"

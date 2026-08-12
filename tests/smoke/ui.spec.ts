@@ -702,6 +702,177 @@ test("auth pages show compact brand identity without horizontal overflow", async
   }
 });
 
+test("registration explains identity and updates its live preview", async ({
+  page,
+}) => {
+  await mockPublicShell(page);
+  await acknowledgeCookieNotice(page);
+  await page.route("**/api/auth/handle-availability", async (route) => {
+    const payload = (await route.request().postDataJSON()) as { handle?: string };
+
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { available: true, handle: payload.handle },
+      }),
+    });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/register");
+
+  await expect(
+    page.getByText("Shown on posts, profiles, and chats. It doesn’t need to be unique."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Your unique @username, profile URL, and account identifier."),
+  ).toBeVisible();
+
+  await page.getByLabel("Display Name").fill("Thia Example");
+  await page.getByLabel("Handle").fill("Thia_Example");
+
+  const preview = page.getByTestId("identity-preview");
+  await expect(preview.getByTestId("identity-preview-display-name")).toHaveText(
+    "Thia Example",
+  );
+  await expect(preview.getByTestId("identity-preview-handle")).toHaveText(
+    "@thia_example",
+  );
+  await expect(preview.getByTestId("identity-preview-url")).toHaveText(
+    "thia.lol/@thia_example",
+  );
+  await expect(page.getByText("@thia_example is available.")).toBeVisible();
+
+  const reveal = page.getByRole("button", { name: "Show password" });
+  await expect(reveal).toBeVisible();
+  const touchControls = [
+    page.getByRole("link", { name: "Sign in", exact: true }),
+    page.getByRole("link", { name: "Create account", exact: true }).last(),
+    reveal,
+    page.getByRole("button", { name: "Create account" }),
+  ];
+
+  for (const control of touchControls) {
+    const box = await control.boundingBox();
+
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+  }
+
+  const passwordInput = page.getByRole("textbox", {
+    name: "Password",
+    exact: true,
+  });
+  await passwordInput.fill("password-12345");
+  await reveal.click();
+  await expect(passwordInput).toHaveAttribute("type", "text");
+  await expect(page.getByRole("button", { name: "Hide password" })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+});
+
+test("registration rejects extra Handle prefixes before availability lookup", async ({
+  page,
+}) => {
+  await mockPublicShell(page);
+  await acknowledgeCookieNotice(page);
+  let availabilityRequests = 0;
+  await page.route("**/api/auth/handle-availability", async (route) => {
+    availabilityRequests += 1;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: { available: true, handle: "viewer" } }),
+    });
+  });
+  await page.goto("/register");
+
+  const handle = page.getByRole("textbox", { name: "Handle" });
+  await handle.fill("@@viewer");
+
+  await expect(handle).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByText(/start and end with a letter or number/i)).toBeVisible();
+  await page.waitForTimeout(450);
+  expect(availabilityRequests).toBe(0);
+});
+
+test("login clearly accepts email or Handle and offers honest recovery help", async ({
+  page,
+}) => {
+  await mockPublicShell(page);
+  await acknowledgeCookieNotice(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/login");
+
+  await expect(page.getByLabel("Email or Handle")).toBeVisible();
+  await expect(page.getByText("Use your email address or unique Handle.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "hello@thia.lol" })).toHaveAttribute(
+    "href",
+    "mailto:hello@thia.lol",
+  );
+  await expect(page.getByRole("link", { name: /forgot password/i })).toHaveCount(0);
+});
+
+test("login submits a Handle as the account identifier", async ({ page }) => {
+  const authState = { authenticated: false };
+  let loginPayload: Record<string, unknown> | undefined;
+
+  await mockPublicShell(page, { authState });
+  await page.route("**/api/auth/login", async (route) => {
+    loginPayload = (await route.request().postDataJSON()) as Record<string, unknown>;
+    authState.authenticated = true;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: {} }),
+    });
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/login");
+  await page.getByRole("textbox", { name: "Email or Handle" }).fill("@viewer");
+  await page
+    .getByRole("textbox", { name: "Password", exact: true })
+    .fill("password12345");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect.poll(() => loginPayload).toMatchObject({
+    identifier: "@viewer",
+    password: "password12345",
+  });
+  expect(loginPayload).not.toHaveProperty("email");
+});
+
+test("signed-in auth routes show the current Display Name and Handle", async ({
+  page,
+}) => {
+  await mockAuthenticatedShell(page);
+  await acknowledgeCookieNotice(page);
+
+  for (const path of ["/login", "/register"]) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: "You’re already signed in" })).toBeVisible();
+    await expect(page.getByTestId("identity-preview-display-name")).toHaveText("Viewer");
+    await expect(page.getByTestId("identity-preview-handle")).toHaveText("@viewer");
+  }
+});
+
+test("registration keeps submission available when availability checks fail", async ({
+  page,
+}) => {
+  await mockPublicShell(page);
+  await acknowledgeCookieNotice(page);
+  await page.route("**/api/auth/handle-availability", (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Unavailable." }),
+    }),
+  );
+  await page.goto("/register");
+  await page.getByRole("textbox", { name: "Handle" }).fill("viewer_new");
+
+  await expect(
+    page.getByText(/Availability couldn’t be checked/i),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create account" })).toBeEnabled();
+});
+
 test("registration uses the authoritative handle availability endpoint", async ({
   page,
 }) => {
@@ -721,7 +892,7 @@ test("registration uses the authoritative handle availability endpoint", async (
   await page.goto("/register");
 
   await page.getByRole("textbox", { name: "Handle" }).fill("thia");
-  await expect(page.getByText("@thia is already in use.")).toBeVisible();
+  await expect(page.getByText("@thia is already in use or reserved.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Create account" })).toBeDisabled();
 });
 
@@ -753,8 +924,12 @@ test("login returnTo accepts internal paths", async ({ page }) => {
   await acknowledgeCookieNotice(page);
   await page.goto("/login?returnTo=%2F%40thia");
 
-  await page.getByRole("textbox", { name: "Email" }).fill("viewer@example.test");
-  await page.getByLabel("Password").fill("password12345");
+  await page
+    .getByRole("textbox", { name: "Email or Handle" })
+    .fill("viewer@example.test");
+  await page
+    .getByRole("textbox", { name: "Password", exact: true })
+    .fill("password12345");
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(/\/@thia$/);
@@ -767,14 +942,41 @@ test("login returnTo rejects external paths", async ({ page }) => {
   await acknowledgeCookieNotice(page);
   await page.goto("/login?returnTo=https%3A%2F%2Fevil.test%2Fprofile");
 
-  await page.getByRole("textbox", { name: "Email" }).fill("viewer@example.test");
-  await page.getByLabel("Password").fill("password12345");
+  await page
+    .getByRole("textbox", { name: "Email or Handle" })
+    .fill("viewer@example.test");
+  await page
+    .getByRole("textbox", { name: "Password", exact: true })
+    .fill("password12345");
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(/\/$/);
   expect(new URL(page.url()).pathname).toBe("/");
   expect(new URL(page.url()).origin).not.toBe("https://evil.test");
 });
+
+for (const [label, returnTo] of [
+  ["protocol-relative", "%2F%2Fevil.test%2Fprofile"],
+  ["backslash", "%2F%5Cevil.test%2Fprofile"],
+] as const) {
+  test(`login returnTo rejects ${label} paths`, async ({ page }) => {
+    const authState = { authenticated: false };
+
+    await mockPublicShell(page, { authState });
+    await acknowledgeCookieNotice(page);
+    await page.goto(`/login?returnTo=${returnTo}`);
+    await page
+      .getByRole("textbox", { name: "Email or Handle" })
+      .fill("viewer@example.test");
+    await page
+      .getByRole("textbox", { name: "Password", exact: true })
+      .fill("password12345");
+    await page.getByRole("button", { name: "Sign in" }).click();
+
+    await expect(page).toHaveURL(/\/$/);
+    expect(new URL(page.url()).pathname).toBe("/");
+  });
+}
 
 test("two-factor login preserves safe returnTo", async ({ page }) => {
   const authState = { authenticated: false };
@@ -783,8 +985,12 @@ test("two-factor login preserves safe returnTo", async ({ page }) => {
   await acknowledgeCookieNotice(page);
   await page.goto("/login?returnTo=%2F%40thia%3Ffrom%3Dspotify");
 
-  await page.getByRole("textbox", { name: "Email" }).fill("twofactor@example.test");
-  await page.getByLabel("Password").fill("password12345");
+  await page
+    .getByRole("textbox", { name: "Email or Handle" })
+    .fill("twofactor@example.test");
+  await page
+    .getByRole("textbox", { name: "Password", exact: true })
+    .fill("password12345");
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(
@@ -796,6 +1002,31 @@ test("two-factor login preserves safe returnTo", async ({ page }) => {
   await page.getByRole("button", { name: "Verify code" }).click();
 
   await expect(page).toHaveURL(/\/@thia\?from=spotify$/);
+});
+
+test("two-factor recovery codes keep an alphanumeric keyboard", async ({
+  page,
+}) => {
+  const authState = { authenticated: false };
+
+  await mockPublicShell(page, { authState });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/login");
+  await page
+    .getByRole("textbox", { name: "Email or Handle" })
+    .fill("twofactor@example.test");
+  await page
+    .getByRole("textbox", { name: "Password", exact: true })
+    .fill("password12345");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  const code = page.getByRole("textbox", {
+    name: "Authenticator or recovery code",
+  });
+  await expect(code).toBeVisible();
+  await expect(code).not.toHaveAttribute("inputmode", "numeric");
+  await code.fill("A1B2C3D4E5");
+  await expect(code).toHaveValue("A1B2C3D4E5");
 });
 
 test("mobile primary nav shows one Post affordance and no Admin", async ({ page }) => {
@@ -1477,10 +1708,10 @@ async function mockShell(
   if (authState) {
     await page.route("**/api/auth/login", async (route) => {
       const payload = (await route.request().postDataJSON()) as {
-        email?: string;
+        identifier?: string;
       };
 
-      if (payload.email === "twofactor@example.test") {
+      if (payload.identifier === "twofactor@example.test") {
         await route.fulfill({
           contentType: "application/json",
           body: JSON.stringify({

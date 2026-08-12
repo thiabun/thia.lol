@@ -26,6 +26,7 @@ import { Button, ButtonLink } from "../components/ui/Button";
 import { ModalSheet } from "../components/ui/ModalSheet";
 import { Panel } from "../components/ui/Panel";
 import {
+  FieldMessage,
   HandleField,
   SelectField,
   TextareaField,
@@ -433,7 +434,14 @@ export function SettingsPage() {
 
       <div className="space-y-1">
         <SettingsSection id="account" title="Account" icon={UserRound}>
-          <div className="grid gap-2 md:grid-cols-2">
+          <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+            <AccountFactRow
+              icon={UserRound}
+              label="Display Name"
+              value={settings.account.displayName}
+              actionLabel="Open profile editor"
+              to={`/@${settings.account.handle}?editCanvas=1`}
+            />
             <AccountFactRow
               icon={Mail}
               label="Email"
@@ -449,6 +457,10 @@ export function SettingsPage() {
               onEdit={() => setIdentityEditor("handle")}
             />
           </div>
+          <p className="mt-2 text-xs leading-5 text-muted">
+            Your Display Name is public and doesn’t need to be unique. Your
+            Handle is your unique @username, profile URL, and account identifier.
+          </p>
         </SettingsSection>
 
         <div id="connections" className="border-t border-line/65 py-3">
@@ -973,8 +985,16 @@ export function SettingsPage() {
             disabled={settings.account.handleChange.canChange === false}
             density="compact"
             required
+            minLength={3}
             maxLength={41}
+            pattern="@?[A-Za-z0-9][A-Za-z0-9_-]{1,38}[A-Za-z0-9]"
+            title="Use 3-40 letters, numbers, dashes, or underscores. Start and end with a letter or number."
+            aria-describedby="settings-handle-guidance"
           />
+          <FieldMessage id="settings-handle-guidance">
+            Your unique @username, profile URL, and account identifier. Use 3–40
+            letters, numbers, dashes, or underscores.
+          </FieldMessage>
           <TextField
             id="settings-handle-password"
             name="currentPassword"
@@ -1100,12 +1120,14 @@ function AccountFactRow({
   icon: Icon,
   label,
   onEdit,
+  to,
   value,
 }: {
   actionLabel: string;
   icon: LucideIcon;
   label: string;
-  onEdit: () => void;
+  onEdit?: (() => void) | undefined;
+  to?: string | undefined;
   value: string;
 }) {
   return (
@@ -1122,16 +1144,28 @@ function AccountFactRow({
         </p>
         <p className="truncate text-sm font-semibold text-text">{value}</p>
       </div>
-      <Button
-        type="button"
-        size="icon"
-        variant="secondary"
-        className="size-9 shrink-0"
-        aria-label={actionLabel}
-        title={actionLabel}
-        icon={<Pencil aria-hidden="true" size={15} />}
-        onClick={onEdit}
-      />
+      {to ? (
+        <ButtonLink
+          to={to}
+          size="icon"
+          variant="secondary"
+          className="size-11 shrink-0"
+          aria-label={actionLabel}
+          title={actionLabel}
+          icon={<Pencil aria-hidden="true" size={15} />}
+        />
+      ) : (
+        <Button
+          type="button"
+          size="icon"
+          variant="secondary"
+          className="size-11 shrink-0"
+          aria-label={actionLabel}
+          title={actionLabel}
+          icon={<Pencil aria-hidden="true" size={15} />}
+          onClick={onEdit}
+        />
+      )}
     </div>
   );
 }

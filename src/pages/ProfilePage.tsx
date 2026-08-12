@@ -3026,7 +3026,7 @@ function ProfileIdentityEditorFields({
       <ProfileInfoAutosaveStatus error={autosaveError} state={autosaveState} />
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-xs font-semibold uppercase text-muted">
-          Name
+          Display Name
           <input
             className="mt-1 h-10 w-full rounded-control border border-line bg-canvas/55 px-3 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
             maxLength={displayNameMaxLength}

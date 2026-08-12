@@ -83,7 +83,7 @@ Current frontend behavior:
 
 Current profile text and media constraints:
 
-- Display name: required, maximum 120 characters.
+- Display Name: required, maximum 50 visible characters and does not need to be unique.
 - Bio: optional, maximum 500 characters.
 - Location: optional, maximum 120 characters.
 - Connections: maximum 10, each input maximum 300 characters.
@@ -199,7 +199,7 @@ Allowed now or likely allowed later, subject to validation:
 
 Allowed customization must never hide these profile controls or contexts:
 
-- Display name and handle.
+- Display Name and Handle.
 - Avatar or equivalent identity marker.
 - Report profile.
 - Follow/unfollow.
@@ -592,7 +592,7 @@ Future public reads should:
 
 Profile editor rules:
 
-- Existing edit behavior must keep display name, bio, location, avatar, banner, profile background, accent/theme, and Connections working.
+- Existing edit behavior must keep Display Name, bio, location, avatar, banner, profile background, accent/theme, and Connections working.
 - Future module editors must preview changes before save where practical.
 - Do not show controls for unsupported modules, integrations, embeds, privacy options, or layout modes.
 - Empty states must be honest and should not imply future modules already exist.

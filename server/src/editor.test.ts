@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createEditorRepository } from "./editor.js";
+import { hashPhpPassword } from "./passwords.js";
 import type { RequestSession } from "./sessions.js";
 
 type ExecuteCall = {
@@ -11,6 +12,7 @@ type ExecuteCall = {
 
 type FakePoolOptions = {
   draftJson?: string;
+  handleReservedByUserId?: number;
   moduleDeleteAffectedRows?: number;
   moduleRows?: Array<Record<string, unknown>>;
   moduleUpdateAffectedRows?: number;
@@ -66,6 +68,7 @@ function fakePool(options: FakePoolOptions = {}) {
   const deletedModuleUpdates: Array<Record<string, unknown>> = [];
   const profileFeaturedClears: string[] = [];
   const transactionEvents: string[] = [];
+  let passwordHash: string | undefined;
   const defaultModuleRows = [
     {
       id: 20,
@@ -102,6 +105,36 @@ function fakePool(options: FakePoolOptions = {}) {
 
     if (query.includes("INFORMATION_SCHEMA.COLUMNS")) {
       return [[{ column_count: columnNames.has(String(params?.[1])) ? 1 : 0 }], undefined];
+    }
+
+    if (query.includes("SELECT password_hash") && query.includes("FROM users")) {
+      passwordHash ??= await hashPhpPassword("correct-password");
+      return [[{ password_hash: passwordHash }], undefined];
+    }
+
+    if (query.includes("FROM user_handle_history") && query.includes("ORDER BY created_at DESC")) {
+      if (query.includes("WHERE user_id = ?")) {
+        return [[], undefined];
+      }
+
+      return [
+        options.handleReservedByUserId === undefined
+          ? []
+          : [{ user_id: options.handleReservedByUserId }],
+        undefined,
+      ];
+    }
+
+    if (query.includes("FROM users") && query.includes("FOR UPDATE")) {
+      return [[{ user_id: 1 }], undefined];
+    }
+
+    if (query.includes("UPDATE users") && query.includes("SET handle = ?")) {
+      return [{ affectedRows: 1 }, undefined];
+    }
+
+    if (query.includes("INSERT INTO user_handle_history")) {
+      return [{ affectedRows: 1, insertId: 1 }, undefined];
     }
 
     if (query.includes("SELECT id") && query.includes("WHERE user_id = ?") && query.includes("AND type = ?")) {
@@ -847,6 +880,58 @@ const session: RequestSession = {
 };
 const canvasDraftRevisionOne = "draft:00000000-0000-4000-8000-000000000001";
 const canvasDraftRevisionTwo = "draft:00000000-0000-4000-8000-000000000002";
+
+describe("editor Handle reservation serialization", () => {
+  it("locks the Handle domain, rechecks reservations on the transaction, then updates", async () => {
+    const { calls, pool, transactionEvents } = fakePool();
+    const repository = createEditorRepository(pool as never);
+
+    await expect(
+      repository.updateAccountHandle(session, {
+        currentPassword: "correct-password",
+        handle: "viewer",
+      }),
+    ).rejects.toThrow("Unhandled fake pool query: INSERT IGNORE INTO user_preferences");
+
+    const lockIndexes = calls
+      .map((call, index) => ({ call, index }))
+      .filter(({ call }) => call.query.includes("FOR UPDATE"))
+      .map(({ index }) => index);
+    const reservationIndex = calls.findIndex(
+      (call) =>
+        call.source === "connection" &&
+        call.query.includes("FROM user_handle_history") &&
+        call.query.includes("old_handle = ?"),
+    );
+    const updateIndex = calls.findIndex((call) =>
+      call.query.includes("SET handle = ?"),
+    );
+
+    expect(lockIndexes).toHaveLength(2);
+    expect(reservationIndex).toBeGreaterThan(lockIndexes[1] ?? -1);
+    expect(updateIndex).toBeGreaterThan(reservationIndex);
+    expect(transactionEvents).toEqual(["begin", "commit"]);
+  });
+
+  it("rejects a post-lock reservation before updating the user", async () => {
+    const { calls, pool, transactionEvents } = fakePool({
+      handleReservedByUserId: 99,
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await expect(
+      repository.updateAccountHandle(session, {
+        currentPassword: "correct-password",
+        handle: "viewer",
+      }),
+    ).rejects.toMatchObject({
+      message: "Handle is temporarily reserved.",
+      statusCode: 409,
+    });
+    expect(calls.some((call) => call.query.includes("SET handle = ?"))).toBe(false);
+    expect(transactionEvents).toEqual(["begin", "rollback"]);
+  });
+});
 
 describe("editor profile module payloads", () => {
   it("keeps cached rich integration cards on owner module responses", async () => {

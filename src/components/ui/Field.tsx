@@ -6,7 +6,13 @@ import type {
   TextareaHTMLAttributes,
 } from "react";
 import { forwardRef, useState } from "react";
-import { ChevronDown, Search, type LucideIcon } from "lucide-react";
+import {
+  ChevronDown,
+  Eye,
+  EyeOff,
+  Search,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "../../lib/classNames";
 
 type FieldDensity = "default" | "compact";
@@ -37,18 +43,103 @@ function FieldShell({
   className,
 }: FieldShellProps) {
   return (
-    <label className={cn("block", className)} htmlFor={id}>
-      <span
+    <div className={cn("block", className)}>
+      <label
         className={cn(
           "mb-2 flex items-center gap-2 text-sm font-medium text-text",
           hideLabel && "sr-only",
         )}
+        htmlFor={id}
       >
         {Icon ? <Icon aria-hidden="true" size={16} /> : null}
         {label}
-      </span>
+      </label>
       {children}
-    </label>
+    </div>
+  );
+}
+
+type FieldMessageProps = {
+  children: ReactNode;
+  className?: string | undefined;
+  id?: string | undefined;
+  tone?: "muted" | "success" | "error" | undefined;
+};
+
+export function FieldMessage({
+  children,
+  className,
+  id,
+  tone = "muted",
+}: FieldMessageProps) {
+  return (
+    <p
+      id={id}
+      role={tone === "error" ? "alert" : undefined}
+      className={cn(
+        "mt-1.5 text-xs leading-5",
+        tone === "muted" && "text-muted",
+        tone === "success" && "text-leaf-ink",
+        tone === "error" && "text-rose-ink",
+        className,
+      )}
+    >
+      {children}
+    </p>
+  );
+}
+
+type PasswordFieldProps = Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  "type"
+> & {
+  id: string;
+  label: string;
+  density?: FieldDensity | undefined;
+  icon?: LucideIcon | undefined;
+  hideLabel?: boolean | undefined;
+};
+
+export function PasswordField({
+  density = "default",
+  id,
+  label,
+  icon,
+  hideLabel,
+  className,
+  ...props
+}: PasswordFieldProps) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <FieldShell id={id} label={label} icon={icon} hideLabel={hideLabel}>
+      <span className="relative block">
+        <input
+          id={id}
+          type={visible ? "text" : "password"}
+          className={cn(
+            controlBaseClass,
+            controlDensityClass[density],
+            "pr-12",
+            className,
+          )}
+          {...props}
+        />
+        <button
+          type="button"
+          className="app-control absolute right-0.5 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-control text-muted transition hover:bg-surface-strong/70 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          aria-label={visible ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+          aria-pressed={visible}
+          onClick={() => setVisible((current) => !current)}
+        >
+          {visible ? (
+            <EyeOff aria-hidden="true" size={18} />
+          ) : (
+            <Eye aria-hidden="true" size={18} />
+          )}
+        </button>
+      </span>
+    </FieldShell>
   );
 }
 

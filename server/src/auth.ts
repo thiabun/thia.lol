@@ -5,12 +5,16 @@ import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from "mysql
 import nacl from "tweetnacl";
 
 import { normalizeSignupAttribution, type GrowthAttributionPayload } from "./growth.js";
-import { hashPhpPassword, verifyPhpPassword } from "./passwords.js";
+import {
+  hashPhpPassword,
+  verifyPhpPassword,
+  verifyPhpPasswordOrDummy,
+} from "./passwords.js";
 import { authSessionPayload, csrfTokenForSession, type AuthSessionPayload } from "./private.js";
 import { hashSessionToken, type RequestSession } from "./sessions.js";
 import { displayNameLengthLabel, displayNameMaxLength } from "./display-names.js";
 
-const genericLoginError = "Invalid email or password.";
+const genericLoginError = "Invalid email, handle, or password.";
 const twoFactorIssuer = "thia.lol";
 const twoFactorStepSeconds = 30;
 const twoFactorChallengeSeconds = 600;
@@ -107,8 +111,12 @@ interface UserLoginRow extends RowDataPacket {
   id: number | string;
   password_hash: string | null;
   status: string | null;
-  deletion_pending: number | string | null;
 }
+
+export type AuthLoginIdentifier = {
+  kind: "email" | "handle";
+  value: string;
+};
 
 interface SessionRow extends RowDataPacket {
   session_id: number | string;
@@ -198,13 +206,41 @@ export function validateAuthEmail(value: unknown): string {
   return email;
 }
 
+export function validateAuthLoginIdentifier(value: unknown): AuthLoginIdentifier {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new AuthRouteError("Email or handle is required.", 422);
+  }
+
+  const identifier = value.trim();
+
+  try {
+    if (identifier.startsWith("@") || !identifier.includes("@")) {
+      return {
+        kind: "handle",
+        value: validateAuthHandle(identifier),
+      };
+    }
+
+    return {
+      kind: "email",
+      value: validateAuthEmail(identifier),
+    };
+  } catch (error) {
+    if (error instanceof AuthRouteError) {
+      throw new AuthRouteError("Enter a valid email address or handle.", 422);
+    }
+
+    throw error;
+  }
+}
+
 export function validateAuthPassword(value: unknown): string {
   if (typeof value !== "string") {
     throw new AuthRouteError("Password is required.", 422);
   }
 
-  if (Buffer.byteLength(value) < 10 || Buffer.byteLength(value) > 255) {
-    throw new AuthRouteError("Password must be between 10 and 255 characters.", 422);
+  if (Array.from(value).length < 10 || Buffer.byteLength(value) > 255) {
+    throw new AuthRouteError("Password must be at least 10 characters and at most 255 bytes.", 422);
   }
 
   return value;
@@ -215,7 +251,13 @@ export function validateAuthHandle(value: unknown): string {
     throw new AuthRouteError("Handle is required.", 422);
   }
 
-  const handle = value.trim().replace(/^@+/u, "").toLowerCase();
+  const input = value.trim();
+
+  if (input.startsWith("@@")) {
+    throw new AuthRouteError("Handle must start with at most one @.", 422);
+  }
+
+  const handle = input.replace(/^@/u, "").toLowerCase();
 
   if (!/^[a-z0-9](?:[a-z0-9_-]{1,38}[a-z0-9])$/u.test(handle)) {
     throw new AuthRouteError("Handle must be 3-40 characters using letters, numbers, dashes, or underscores.", 422);
@@ -312,24 +354,35 @@ class MysqlAuthRepository implements AuthRepository {
   }
 
   async login(body: Record<string, unknown>, context: AuthRequestContext): Promise<AuthSessionResult | TwoFactorChallengePayload> {
-    const email = validateAuthEmail(body.email);
+    const identifier = validateAuthLoginIdentifier(body.identifier ?? body.email);
     const password = typeof body.password === "string" ? body.password : "";
 
     await this.consumeRateLimit(
       "login",
-      `${context.ipAddress}|${email}`,
+      `${context.ipAddress}|*`,
+      40,
+      900,
+    );
+    const user = await this.loginUser(identifier);
+    await this.consumeRateLimit(
+      "login",
+      user === null
+        ? `${context.ipAddress}|identifier:${identifier.value}`
+        : `${context.ipAddress}|user:${user.id}`,
       8,
       900,
     );
 
-    const user = await this.loginUser(email);
+    const passwordMatches = await verifyPhpPasswordOrDummy(
+      password,
+      user?.password_hash,
+    );
 
     if (
       user === null ||
       user.status !== "active" ||
-      numberValue(user.deletion_pending) > 0 ||
       typeof user.password_hash !== "string" ||
-      !(await verifyPhpPassword(password, user.password_hash))
+      !passwordMatches
     ) {
       throw new AuthRouteError(genericLoginError, 401);
     }
@@ -354,9 +407,13 @@ class MysqlAuthRepository implements AuthRepository {
        LIMIT 1`,
       [handle],
     );
+    const reserved =
+      rows.length === 0 &&
+      (await this.tableExists("user_handle_history")) &&
+      (await this.handleHasActiveReservation(this.pool, handle));
 
     return {
-      available: rows.length === 0,
+      available: rows.length === 0 && !reserved,
       handle,
     };
   }
@@ -369,16 +426,24 @@ class MysqlAuthRepository implements AuthRepository {
     const attribution = normalizeSignupAttribution(body.attribution);
 
     await this.consumeRateLimit("register", context.ipAddress, 5, 3_600);
+    const hasHandleHistory = await this.tableExists("user_handle_history");
+    const passwordHash = await hashPhpPassword(password);
 
     const connection = await this.pool.getConnection();
 
     try {
       await connection.beginTransaction();
 
+      await this.lockHandleRegistrationDomain(connection, handle);
+
+      if (hasHandleHistory && (await this.handleHasActiveReservation(connection, handle))) {
+        throw new AuthRouteError("Handle is temporarily unavailable.", 409);
+      }
+
       const [userResult] = await connection.execute<ResultSetHeader>(
         `INSERT INTO users (handle, email, password_hash, role)
          VALUES (?, ?, ?, ?)`,
-        [handle, email, await hashPhpPassword(password), "member"],
+        [handle, email, passwordHash, "member"],
       );
       const userId = userResult.insertId;
 
@@ -578,27 +643,48 @@ class MysqlAuthRepository implements AuthRepository {
     }
   }
 
-  private async loginUser(email: string): Promise<UserLoginRow | null> {
-    const hasDeletionTable = await this.tableExists("account_deletion_requests");
-    const deletionSelect = hasDeletionTable
-      ? `EXISTS (
-          SELECT 1
-          FROM account_deletion_requests deletion_requests
-          WHERE deletion_requests.user_id = users.id
-            AND deletion_requests.canceled_at IS NULL
-            AND deletion_requests.completed_at IS NULL
-          LIMIT 1
-        ) AS deletion_pending`
-      : "0 AS deletion_pending";
+  private async loginUser(identifier: AuthLoginIdentifier): Promise<UserLoginRow | null> {
+    const identifierColumn = identifier.kind === "email" ? "email" : "handle";
     const [rows] = await this.pool.execute<UserLoginRow[]>(
-      `SELECT id, password_hash, status, ${deletionSelect}
+      `SELECT id, password_hash, status
        FROM users
-       WHERE email = ?
+       WHERE ${identifierColumn} = ?
        LIMIT 1`,
-      [email],
+      [identifier.value],
     );
 
     return rows[0] ?? null;
+  }
+
+  private async handleHasActiveReservation(
+    executor: Pool | PoolConnection,
+    handle: string,
+  ): Promise<boolean> {
+    const [rows] = await executor.execute<ExistingUserRow[]>(
+      `SELECT 1 AS user_exists
+       FROM user_handle_history
+       WHERE old_handle = ?
+         AND reserved_until > UTC_TIMESTAMP()
+       LIMIT 1`,
+      [handle],
+    );
+
+    return rows.length > 0;
+  }
+
+  private async lockHandleRegistrationDomain(
+    connection: PoolConnection,
+    handle: string,
+  ): Promise<void> {
+    await connection.execute<ExistingUserRow[]>(
+      `SELECT id AS user_exists
+       FROM users
+       WHERE handle >= ?
+       ORDER BY handle
+       LIMIT 1
+       FOR UPDATE`,
+      [handle],
+    );
   }
 
   private async createSessionForUser(userId: number, context: AuthRequestContext): Promise<AuthSessionResult> {

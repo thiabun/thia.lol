@@ -658,6 +658,7 @@ export function AppShell() {
           topBarAction={topBarAction}
         />
         <CookieNotice
+          focusedRoute={focusedShellRoute}
           onDismiss={() => setCookieNoticeVisible(false)}
           visible={cookieNoticeVisible}
         />
@@ -1391,9 +1392,11 @@ function SiteFooter({
 }
 
 function CookieNotice({
+  focusedRoute,
   onDismiss,
   visible,
 }: {
+  focusedRoute: boolean;
   onDismiss: () => void;
   visible: boolean;
 }) {
@@ -1413,7 +1416,12 @@ function CookieNotice({
 
   return (
     <div
-      className="site-profile-glass-surface fixed inset-x-3 top-[4.25rem] z-50 mx-auto max-w-2xl rounded-panel border border-line bg-surface/96 p-4 text-sm text-muted shadow-lift backdrop-blur-veil lg:bottom-5 lg:top-auto"
+      className={cn(
+        "site-profile-glass-surface z-50 mx-auto max-w-2xl rounded-panel border border-line bg-surface/96 p-4 text-sm text-muted shadow-lift backdrop-blur-veil",
+        focusedRoute
+          ? "relative mt-3 w-[calc(100%-1.5rem)]"
+          : "fixed inset-x-3 top-[4.25rem] lg:bottom-5 lg:top-auto",
+      )}
       data-testid="cookie-notice"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start">

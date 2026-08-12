@@ -1179,10 +1179,15 @@ class MysqlEditorRepository implements EditorRepository {
     }
 
     await this.rejectHandleCooldown(session.userId);
-    await this.rejectReservedHandle(nextHandle, session.userId);
-
     try {
       await this.withTransaction(async (connection) => {
+        await this.lockHandleRegistrationDomain(connection, nextHandle);
+        await this.lockHandleRegistrationDomain(connection, currentHandle);
+        await this.rejectReservedHandle(
+          nextHandle,
+          session.userId,
+          connection,
+        );
         await connection.execute<ResultSetHeader>(
           `UPDATE users
            SET handle = ?,
@@ -2270,14 +2275,18 @@ class MysqlEditorRepository implements EditorRepository {
     }
   }
 
-  private async rejectReservedHandle(handle: string, userId: number): Promise<void> {
+  private async rejectReservedHandle(
+    handle: string,
+    userId: number,
+    executor: Pool | PoolConnection = this.pool,
+  ): Promise<void> {
     const capabilities = await this.schemaCapabilities();
 
     if (!capabilities.hasUserHandleHistory) {
       return;
     }
 
-    const [rows] = await this.pool.execute<HandleHistoryRow[]>(
+    const [rows] = await executor.execute<HandleHistoryRow[]>(
       `SELECT user_id
        FROM user_handle_history
        WHERE old_handle = ?
@@ -2291,6 +2300,21 @@ class MysqlEditorRepository implements EditorRepository {
     if (row !== undefined && numberValue(row.user_id) !== userId) {
       throw new EditorRouteError("Handle is temporarily reserved.", 409);
     }
+  }
+
+  private async lockHandleRegistrationDomain(
+    connection: PoolConnection,
+    handle: string,
+  ): Promise<void> {
+    await connection.execute<ProfileEditorLockRow[]>(
+      `SELECT id AS user_id
+       FROM users
+       WHERE handle >= ?
+       ORDER BY handle
+       LIMIT 1
+       FOR UPDATE`,
+      [handle],
+    );
   }
 
   private async handleChangeState(userId: number): Promise<SettingsPayload["account"]["handleChange"]> {
