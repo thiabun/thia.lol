@@ -14,6 +14,7 @@ import type {
   ProfileIntegrationSuggestionsResult,
 } from "../../lib/api";
 import { audioUploadAccept } from "../../lib/mediaFormats";
+import { distinctSecondaryText } from "../../lib/displayText";
 import {
   postMediaDraftFromIntegration,
   type PostMediaDraft,
@@ -371,25 +372,29 @@ function ProviderSuggestions({
         ) : null}
       </div>
       <div className="mt-2 grid gap-1.5">
-        {items.slice(0, 4).map((item, index) => (
-          <button
-            key={item.id}
-            type="button"
-            className="min-w-0 rounded-control border border-line bg-canvas/70 px-2 py-1.5 text-left transition duration-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-60"
-            disabled={busy}
-            data-testid={`post-music-suggestion-${provider}-${index}`}
-            onClick={() => onSelect(item)}
-          >
-            <span className="block truncate text-sm font-semibold text-text">
-              {item.label}
-            </span>
-            {item.description ? (
-              <span className="mt-0.5 block truncate text-xs text-muted">
-                {item.description}
+        {items.slice(0, 4).map((item, index) => {
+          const description = distinctSecondaryText(item.label, item.description);
+
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className="min-w-0 rounded-control border border-line bg-canvas/70 px-2 py-1.5 text-left transition duration-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-60"
+              disabled={busy}
+              data-testid={`post-music-suggestion-${provider}-${index}`}
+              onClick={() => onSelect(item)}
+            >
+              <span className="block truncate text-sm font-semibold text-text">
+                {item.label}
               </span>
-            ) : null}
-          </button>
-        ))}
+              {description ? (
+                <span className="mt-0.5 block truncate text-xs text-muted">
+                  {description}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
         {!state.loading && items.length === 0 ? (
           <p className="rounded-control bg-canvas/60 px-2 py-1.5 text-xs text-muted">
             {state.error ?? state.result?.message ?? "No suggestions yet."}

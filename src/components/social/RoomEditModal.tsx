@@ -377,7 +377,6 @@ export function RoomEditModal({
           <ThemeAppearanceControl
             config={form.themeConfig}
             controlAttribute="data-room-edit-control"
-            description="Choose how this room looks while people view it."
             label="Theme"
             previewTitle={form.name || "Room"}
             previewSubtitle={`/${form.slug || "room"}`}

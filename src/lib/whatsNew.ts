@@ -40,7 +40,6 @@ export type WhatsNewRelease = {
   readonly boundary: string;
   readonly title: string;
   readonly sinceLabel: string;
-  readonly supportingLine: string;
   readonly groups: readonly WhatsNewGroup[];
 };
 
@@ -49,8 +48,6 @@ export const CURRENT_WHATS_NEW_RELEASE = {
   boundary: "2026-07-10",
   title: "What’s New in thia.lol",
   sinceLabel: "Since July 10",
-  supportingLine:
-    "Profiles, posting, sharing, and the mobile experience all received a substantial polish pass.",
   groups: [
     {
       id: "new",
@@ -78,9 +75,9 @@ export const CURRENT_WHATS_NEW_RELEASE = {
       items: [
         {
           id: "public-home",
-          title: "A clearer welcome to thia.lol",
+          title: "Home gets to the point",
           description:
-            "The signed-out home now explains the place plainly and highlights real starter communities and fresh public posts.",
+            "Signed-out visitors now reach public posts and rooms without a marketing intro.",
           icon: "compass",
         },
         {

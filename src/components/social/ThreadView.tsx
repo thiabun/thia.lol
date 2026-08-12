@@ -204,9 +204,6 @@ function ThreadNode({
             />
           ) : (
             <div className="flex flex-col gap-3 rounded-card border border-line/80 bg-surface/55 p-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-muted">
-                Join the conversation as yourself.
-              </p>
               <ButtonLink to="/login" size="sm" variant="secondary">
                 Log in to reply
               </ButtonLink>
@@ -257,8 +254,7 @@ function ThreadNode({
           centered
           className="mt-3"
           icon={MessageCircle}
-          title="A quiet thread"
-          text="Be the first reply."
+          title="No replies yet"
         />
       ) : null}
 

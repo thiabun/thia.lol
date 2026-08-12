@@ -21,7 +21,6 @@ export function PostComposerModal(props: PostComposerModalProps) {
       open={open}
       onClose={onClose}
       title="New post"
-      description="Share something with your profile or a room."
       closeLabel="Close post composer"
       testId="composer-modal"
       size="md"

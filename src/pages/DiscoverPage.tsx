@@ -1,4 +1,4 @@
-import { Hash, MessageCircle, Radio, Search, Star, UsersRound } from "lucide-react";
+import { Hash } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
@@ -9,16 +9,13 @@ import { PostCard } from "../components/social/PostCard";
 import { RoomCard } from "../components/social/RoomCard";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Avatar } from "../components/ui/Avatar";
-import { Badge } from "../components/ui/Badge";
-import { Button, ButtonLink } from "../components/ui/Button";
+import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
-import { RouteHeader } from "../components/ui/RouteState";
 import { deletePost, getDiscoverFeed, updatePost } from "../lib/api";
 import { cn } from "../lib/classNames";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
-import { formatCountWithUnit } from "../lib/pluralize";
 import type { DiscoverFeed, DiscoverPerson, Post, Room } from "../lib/types";
 import { useAuth } from "../lib/useAuth";
 import { usePaginatedData } from "../lib/usePaginatedData";
@@ -95,59 +92,25 @@ export function DiscoverPage() {
         description="Public activity."
         path="/discover"
       />
-      <section>
-        <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-          <RouteHeader
-            surface="bare"
-            title="Discover"
-            description="Public posts, rooms, and people."
-            meta={
-              <div className="flex flex-wrap gap-2">
-                <ButtonLink
-                  to="/search"
-                  variant="secondary"
-                  size="sm"
-                  icon={<Search aria-hidden="true" size={15} />}
-                >
-                  Search
-                </ButtonLink>
-                <ButtonLink
-                  to="/rooms"
-                  variant="secondary"
-                  size="sm"
-                  icon={<Radio aria-hidden="true" size={15} />}
-                >
-                  Browse rooms
-                </ButtonLink>
-              </div>
-            }
-            actions={
-              <FeedRefreshControls
-                className="md:self-end"
-                lastLoadedAt={discoverState.lastLoadedAt}
-                refreshError={discoverState.refreshError}
-                refreshing={discoverState.refreshing}
-                disabled={discoverState.loading}
-                onRefresh={discoverState.reload}
-              />
-            }
-          />
-        </motion.div>
-      </section>
+      <h1 className="sr-only">Discover</h1>
+      <div className="flex justify-end" data-testid="discover-toolbar">
+        <FeedRefreshControls
+          lastLoadedAt={discoverState.lastLoadedAt}
+          refreshError={discoverState.refreshError}
+          refreshing={discoverState.refreshing}
+          disabled={discoverState.loading}
+          onRefresh={discoverState.reload}
+        />
+      </div>
 
       {discoverState.loading ? (
-        <ApiStateNotice
-          kind="loading"
-          title="Loading activity"
-          text="Loading activity."
-        />
+        <ApiStateNotice kind="loading" title="Loading activity" />
       ) : null}
 
       {discoverState.error && !discoverState.data ? (
         <ApiStateNotice
           kind="error"
           title="Discovery feed is not available"
-          text="Try refreshing in a moment."
           actions={
             <Button
               type="button"
@@ -254,11 +217,7 @@ function DiscoverRisingSection({
       </div>
       <div className="space-y-4">
         {!loading && !error && posts.length === 0 ? (
-          <EmptyState
-            icon={Hash}
-            title="No posts yet"
-            text="No public posts."
-          />
+          <EmptyState icon={Hash} title="No posts yet" />
         ) : null}
 
         {posts.map((post, index) => (
@@ -452,48 +411,27 @@ function PersonCard({
           to={`/@${person.handle}`}
           className="flex h-full flex-col focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <Avatar
-                user={{
-                  displayName: person.displayName,
-                  initials: person.initials,
-                  aura: "frost",
-                  avatarUrl: person.avatarUrl ?? null,
-                }}
-              />
-              <div className="min-w-0">
-                <h3 className="truncate text-sm font-semibold text-text">
-                  {person.displayName}
-                </h3>
-                <p className="truncate text-sm text-muted">@{person.handle}</p>
-              </div>
+          <div className="flex min-w-0 items-center gap-3">
+            <Avatar
+              user={{
+                displayName: person.displayName,
+                initials: person.initials,
+                aura: "frost",
+                avatarUrl: person.avatarUrl ?? null,
+              }}
+            />
+            <div className="min-w-0">
+              <h3 className="truncate text-sm font-semibold text-text">
+                {person.displayName}
+              </h3>
+              <p className="truncate text-sm text-muted">@{person.handle}</p>
             </div>
-            {person.isMoot ? (
-              <Badge tone="leaf">Moot</Badge>
-            ) : person.isFollowing ? (
-              <Badge tone="cool">Following</Badge>
-            ) : null}
           </div>
           {!compact && person.bioSnippet ? (
             <p className="mt-3 line-clamp-2 flex-1 text-sm leading-5 text-muted">
               {person.bioSnippet}
             </p>
           ) : null}
-          <div className={cn("flex flex-wrap gap-2 text-xs text-muted", compact ? "mt-2" : "mt-3")}>
-            <span className="inline-flex items-center gap-1 rounded-control bg-canvas/55 px-1.5 py-0.5">
-              <MessageCircle aria-hidden="true" size={14} />
-              {formatCountWithUnit(person.postCount, "post")}
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-control bg-canvas/55 px-1.5 py-0.5">
-              <Star aria-hidden="true" size={14} />
-              {formatCountWithUnit(person.starCount, "star")}
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-control bg-canvas/55 px-1.5 py-0.5">
-              <UsersRound aria-hidden="true" size={14} />
-              {formatCountWithUnit(person.followerCount, "follower")}
-            </span>
-          </div>
         </Link>
       </Panel>
     </motion.article>

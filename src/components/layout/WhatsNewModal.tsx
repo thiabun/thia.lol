@@ -92,10 +92,7 @@ export function WhatsNewModal({
       closeLabel="Close what’s new"
       description={CURRENT_WHATS_NEW_RELEASE.sinceLabel}
       footer={
-        <div className="flex items-center justify-between gap-3">
-          <p className="max-w-40 text-xs leading-4 text-muted sm:max-w-none">
-            Reopen anytime from your menu or the site footer.
-          </p>
+        <div className="flex justify-end">
           <Button
             type="button"
             className="min-h-11 min-w-24 shrink-0"
@@ -116,12 +113,6 @@ export function WhatsNewModal({
       titleClassName="text-xl tracking-[-0.02em] lg:text-2xl"
     >
       <div data-testid="whats-new-content">
-        <div className="border-b border-line/72 bg-gradient-to-r from-accent/12 via-canvas/38 to-cool/10 px-4 py-4 lg:px-6">
-          <p className="max-w-2xl text-sm font-medium leading-6 text-text">
-            {CURRENT_WHATS_NEW_RELEASE.supportingLine}
-          </p>
-        </div>
-
         <div className="divide-y divide-line/72">
           {CURRENT_WHATS_NEW_RELEASE.groups.map((group) => (
             <WhatsNewGroupSection key={group.id} group={group} />

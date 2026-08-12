@@ -56,9 +56,9 @@ export function GifPicker({ className, onSelect }: GifPickerProps) {
 
   return (
     <div className={cn("rounded-panel border border-line bg-surface p-3 shadow-soft", className)}>
-      <div className="flex items-center gap-2">
-        <label className="relative min-w-0 flex-1">
-          <span className="sr-only">Search KLIPY GIFs</span>
+      <div>
+        <label className="relative block min-w-0">
+          <span className="sr-only">Search GIFs</span>
           <Search
             aria-hidden="true"
             className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
@@ -66,24 +66,16 @@ export function GifPicker({ className, onSelect }: GifPickerProps) {
           />
           <input
             className="min-h-9 w-full rounded-control border border-line bg-canvas/70 pl-8 pr-3 text-sm text-text outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
-            placeholder="Search KLIPY GIFs"
+            placeholder="Search GIFs"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
-        <span className="shrink-0 rounded-control border border-line bg-canvas/60 px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-muted">
-          KLIPY
-        </span>
       </div>
 
       <div className="mt-3 min-h-36">
         {loading ? (
-          <CompactStateNotice
-            icon={LoaderCircle}
-            kind="loading"
-            text="Loading GIFs."
-            title="Loading"
-          />
+          <CompactStateNotice icon={LoaderCircle} kind="loading" title="Loading GIFs" />
         ) : null}
 
         {!loading && error ? (
@@ -96,20 +88,11 @@ export function GifPicker({ className, onSelect }: GifPickerProps) {
         ) : null}
 
         {!loading && result && !result.available ? (
-          <CompactStateNotice
-            icon={WifiOff}
-            text="GIF search is unavailable."
-            title="KLIPY unavailable"
-          />
+          <CompactStateNotice icon={WifiOff} title="KLIPY unavailable" />
         ) : null}
 
         {!loading && result?.available && result.items.length === 0 ? (
-          <CompactStateNotice
-            icon={GifIcon}
-            testId="gif-picker-empty"
-            text="No GIFs found."
-            title="No results"
-          />
+          <CompactStateNotice icon={GifIcon} testId="gif-picker-empty" title="No GIFs found" />
         ) : null}
 
         {!loading && result?.available && result.items.length > 0 ? (

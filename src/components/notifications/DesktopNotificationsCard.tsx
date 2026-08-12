@@ -9,7 +9,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
 import {
@@ -253,27 +252,20 @@ export function DesktopNotificationsCard({
             )}
           </span>
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold text-text">
-                Desktop notifications
-              </h2>
-              <Badge
-                tone={
-                  state.tone === "success"
-                    ? "leaf"
-                    : state.tone === "error"
-                      ? "rose"
-                      : "cool"
-                }
-                className="min-h-6 px-2 text-[0.68rem]"
+            <h2 className="text-base font-semibold text-text">
+              Desktop notifications
+            </h2>
+            {loading || state.description ? (
+              <p
+                className="mt-1 text-sm font-medium leading-6 text-muted"
                 data-testid="desktop-notifications-state"
               >
-                {loading ? "checking" : state.label}
-              </Badge>
-            </div>
-            <p className="mt-1 text-sm font-medium leading-6 text-muted">
-              {loading ? "Checking this browser and server setup." : state.description}
-            </p>
+                <span className="sr-only">
+                  {loading ? "checking" : state.label}:{" "}
+                </span>
+                {loading ? "Checking this browser and server setup." : state.description}
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
@@ -346,7 +338,7 @@ function desktopNotificationState(
   pushStatus: PushNotificationStatus | undefined,
 ): {
   label: string;
-  description: string;
+  description?: string;
   icon: LucideIcon;
   tone: "default" | "success" | "error";
 } {
@@ -409,7 +401,6 @@ function desktopNotificationState(
 
   return {
     label: "ready",
-    description: "Enable this browser to receive thia.lol notifications on desktop.",
     icon: BellRing,
     tone: "default",
   };

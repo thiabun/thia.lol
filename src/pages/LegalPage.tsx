@@ -1,29 +1,6 @@
-import {
-  Accessibility,
-  AlertTriangle,
-  ArrowRight,
-  BotOff,
-  CreditCard,
-  Download,
-  EyeOff,
-  FileCheck,
-  FileText,
-  Gavel,
-  HeartHandshake,
-  LockKeyhole,
-  Mail,
-  Megaphone,
-  Scale,
-  ShieldAlert,
-  ShieldCheck,
-  Sparkles,
-  UserCheck,
-  XCircle,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Link, Navigate } from "react-router";
 import { motion } from "motion/react";
-import { BrandLogoMain, BrandMark } from "../components/BrandLogo";
 import { PageMeta } from "../components/PageMeta";
 import { Panel } from "../components/ui/Panel";
 import { pageEntrance } from "../lib/motionPresets";
@@ -60,18 +37,13 @@ type PolicySection = {
 
 type PolicyPageContent = {
   title: string;
-  label: string;
   description: string;
-  stance: string;
   updated: string;
-  icon: LucideIcon;
   sections: PolicySection[];
 };
 
 type PolicyGroup = {
   title: string;
-  description: string;
-  icon: LucideIcon;
   links: PolicySlug[];
 };
 
@@ -83,13 +55,9 @@ const communityConstitution =
 const policies = {
   privacy: {
     title: "Privacy Policy",
-    label: "your rights",
     description:
       "What thia.lol collects, why it is collected, how long it is kept, who it is shared with, and how to use privacy rights.",
-    stance:
-      "We collect the least we reasonably can, explain it clearly, and delete it when we no longer need it.",
     updated,
-    icon: LockKeyhole,
     sections: [
       {
         title: "The promise",
@@ -159,12 +127,9 @@ const policies = {
   },
   "data-export": {
     title: "Data Export / Portability Policy",
-    label: "your rights",
     description:
       "How users can access a readable copy of account, profile, content, moderation, and purchase data.",
-    stance: "Your data should be accessible to you in a readable format.",
     updated,
-    icon: Download,
     sections: [
       {
         title: "Self-service export",
@@ -200,12 +165,9 @@ const policies = {
   },
   "account-deletion": {
     title: "Data Deletion and Account Closure Policy",
-    label: "your rights",
     description:
       "What happens when a user schedules account deletion, what is hidden, what may be retained, and how to export before leaving.",
-    stance: "Leaving should be easy. We will not hold your data hostage.",
     updated,
-    icon: XCircle,
     sections: [
       {
         title: "Current deletion flow",
@@ -240,12 +202,9 @@ const policies = {
   },
   "content-ownership": {
     title: "Content Ownership and License Policy",
-    label: "your rights",
     description:
       "Plain-language ownership and license rules for posts, uploads, profiles, and creator content.",
-    stance: "You own what you make. We host it; we do not take ownership.",
     updated,
-    icon: FileCheck,
     sections: [
       {
         title: "Your content is yours",
@@ -271,12 +230,9 @@ const policies = {
   },
   refunds: {
     title: "Paid Features, Billing and Refund Policy",
-    label: "your rights",
     description:
       "Future-facing rules for purchases, subscriptions, refunds, withdrawal rights, failed payments, and chargebacks.",
-    stance: "Money should never be confusing, manipulative, or hostile.",
     updated,
-    icon: CreditCard,
     sections: [
       {
         title: "Current status",
@@ -328,12 +284,9 @@ const policies = {
   },
   cookies: {
     title: "Cookie Policy",
-    label: "your rights",
     description:
       "The cookies and local preferences thia.lol uses for sign-in, security, theme, cookie notice choices, and embeds.",
-    stance: "Necessary cookies should protect the service, not become a hidden tracking system.",
     updated,
-    icon: EyeOff,
     sections: [
       {
         title: "Current cookie use",
@@ -368,13 +321,9 @@ const policies = {
   },
   "community-guidelines": {
     title: "Community Guidelines",
-    label: "your safety",
     description:
       "The rules for posts, replies, rooms, profiles, uploads, reports, and DMs on a 16+ social platform.",
-    stance:
-      "A mature 16+ social space needs clear consent rules, strong boundaries, and real reporting paths.",
     updated,
-    icon: HeartHandshake,
     sections: [
       {
         title: "16+ platform boundaries",
@@ -411,13 +360,9 @@ const policies = {
   },
   safety: {
     title: "Safety and Abuse Response Policy",
-    label: "your safety",
     description:
       "How thia.lol handles urgent harm, abuse reports, compromised accounts, and illegal-content concerns.",
-    stance:
-      "When someone's safety is at risk, we act quickly, preserve evidence where appropriate, and do not force users through confusing reporting mazes.",
     updated,
-    icon: ShieldAlert,
     sections: [
       {
         title: "Urgent safety categories",
@@ -443,13 +388,9 @@ const policies = {
   },
   moderation: {
     title: "Moderation Policy",
-    label: "your safety",
     description:
       "How reports, human review, warnings, restrictions, suspensions, bans, appeals, and transparency basics work.",
-    stance:
-      "We will explain moderation decisions clearly, give users a meaningful way to appeal, and avoid punishment without context unless safety requires immediate action.",
     updated,
-    icon: Scale,
     sections: [
       {
         title: "Moderation approach",
@@ -487,12 +428,9 @@ const policies = {
   },
   appeals: {
     title: "Appeals Policy",
-    label: "your safety",
     description:
       "How users can challenge content removals, account restrictions, suspensions, bans, and other moderation decisions.",
-    stance: "We can make mistakes. You can challenge decisions. When we are wrong, we will fix it.",
     updated,
-    icon: UserCheck,
     sections: [
       {
         title: "What can be appealed",
@@ -522,13 +460,9 @@ const policies = {
   },
   accessibility: {
     title: "Accessibility Policy",
-    label: "your safety",
     description:
       "The accessibility commitments for navigation, readable UI, motion, alt text, reporting, deletion, and account controls.",
-    stance:
-      "People should not need perfect vision, motor control, hearing, or mental energy to use the site.",
     updated,
-    icon: Accessibility,
     sections: [
       {
         title: "Commitments",
@@ -549,13 +483,9 @@ const policies = {
   },
   "no-dark-patterns": {
     title: "No Dark Patterns Policy",
-    label: "our promises",
     description:
       "A public promise not to trick users in privacy, money, content, account, consent, deletion, or support flows.",
-    stance:
-      "If a choice affects your privacy, money, content, or account, it should be clear, reversible where possible, and not designed to trick you.",
     updated,
-    icon: Sparkles,
     sections: [
       {
         title: "What we will not do",
@@ -573,12 +503,9 @@ const policies = {
   },
   "monetization-ethics": {
     title: "Advertising and Monetization Ethics Policy",
-    label: "our promises",
     description:
       "The boundary for future monetization: no surveillance ads, no selling personal data, no paid trust shortcuts.",
-    stance: "If we monetize, we do it without betraying users.",
     updated,
-    icon: Megaphone,
     sections: [
       {
         title: "Current status",
@@ -606,12 +533,9 @@ const policies = {
   },
   "ai-policy": {
     title: "AI Policy",
-    label: "our promises",
     description:
       "How thia.lol treats AI-generated media, moderation assistance, model training, and third-party AI providers.",
-    stance: "We will not feed your posts, messages, or identity into AI systems.",
     updated,
-    icon: BotOff,
     sections: [
       {
         title: "AI-generated media is not allowed",
@@ -637,12 +561,9 @@ const policies = {
   },
   transparency: {
     title: "Transparency Report Policy",
-    label: "our promises",
     description:
       "What thia.lol intends to track and publish as the platform grows.",
-    stance: "Trust is earned through receipts.",
     updated,
-    icon: FileText,
     sections: [
       {
         title: "Future reports should track",
@@ -660,12 +581,9 @@ const policies = {
   },
   terms: {
     title: "Terms of Service",
-    label: "platform operations",
     description:
       "The contract for accounts, acceptable use, service availability, paid features, intellectual property, liability, and disputes.",
-    stance: "Your content is yours. We only get the permission needed to run the service.",
     updated,
-    icon: Gavel,
     sections: [
       {
         title: "Who can use thia.lol",
@@ -717,12 +635,9 @@ const policies = {
   },
   security: {
     title: "Security Policy",
-    label: "platform operations",
     description:
       "How thia.lol protects accounts and what users should do if something goes wrong.",
-    stance: "We protect user accounts like they matter, because they do.",
     updated,
-    icon: ShieldCheck,
     sections: [
       {
         title: "Account protection",
@@ -751,12 +666,9 @@ const policies = {
   },
   "vulnerability-disclosure": {
     title: "Vulnerability Disclosure Policy",
-    label: "platform operations",
     description:
       "How security researchers can report issues safely and what testing is allowed.",
-    stance: "If you report security issues responsibly, we will treat you as helping, not as an enemy.",
     updated,
-    icon: AlertTriangle,
     sections: [
       {
         title: "How to report",
@@ -786,12 +698,9 @@ const policies = {
   },
   "law-enforcement": {
     title: "Law Enforcement and Government Request Policy",
-    label: "platform operations",
     description:
       "How thia.lol responds to legal process, government requests, emergency requests, and user notice.",
-    stance: "We do not hand over user data casually.",
     updated,
-    icon: Scale,
     sections: [
       {
         title: "Our standard",
@@ -814,12 +723,9 @@ const policies = {
   },
   "creator-marketplace": {
     title: "Creator / Marketplace Policy",
-    label: "platform operations",
     description:
       "Future-facing rules for creator eligibility, payouts, fees, prohibited sales, taxes, disputes, and adult-content limits.",
-    stance: "Creators deserve clear rules, fair cuts, and no surprise platform nonsense.",
     updated,
-    icon: CreditCard,
     sections: [
       {
         title: "Current status",
@@ -841,12 +747,9 @@ const policies = {
   },
   "incident-response": {
     title: "Incident Response Policy",
-    label: "platform operations",
     description:
       "How thia.lol should communicate about outages, data incidents, payment problems, moderation failures, and accidental removals.",
-    stance: "If we break something, we explain it, fix it, and learn from it.",
     updated,
-    icon: ShieldAlert,
     sections: [
       {
         title: "Incident types",
@@ -867,12 +770,9 @@ const policies = {
   },
   copyright: {
     title: "Copyright and Takedown Policy",
-    label: "platform operations",
     description:
       "How thia.lol handles copyright concerns, takedown requests, repeat infringement, and disputes.",
-    stance: "Creative rights matter. So do fair mistakes and clear correction paths.",
     updated,
-    icon: FileText,
     sections: [
       {
         title: "Respect creative rights",
@@ -911,26 +811,36 @@ const policies = {
 const policyGroups: PolicyGroup[] = [
   {
     title: "Your rights",
-    description: "Privacy, deletion, portability, ownership, refunds, and cookies.",
-    icon: LockKeyhole,
-    links: ["privacy", "data-export", "account-deletion", "content-ownership", "refunds", "cookies"],
+    links: [
+      "privacy",
+      "data-export",
+      "account-deletion",
+      "content-ownership",
+      "refunds",
+      "cookies",
+    ],
   },
   {
     title: "Your safety",
-    description: "Community rules, urgent abuse response, moderation, appeals, and access.",
-    icon: ShieldAlert,
-    links: ["community-guidelines", "safety", "moderation", "appeals", "accessibility"],
+    links: [
+      "community-guidelines",
+      "safety",
+      "moderation",
+      "appeals",
+      "accessibility",
+    ],
   },
   {
     title: "Our promises",
-    description: "No dark patterns, ethical monetization, no AI-generated media, and receipts.",
-    icon: Sparkles,
-    links: ["no-dark-patterns", "monetization-ethics", "ai-policy", "transparency"],
+    links: [
+      "no-dark-patterns",
+      "monetization-ethics",
+      "ai-policy",
+      "transparency",
+    ],
   },
   {
     title: "Platform operations",
-    description: "Terms, security, reports, legal requests, creator tools, incidents, and copyright.",
-    icon: Gavel,
     links: [
       "terms",
       "security",
@@ -943,18 +853,10 @@ const policyGroups: PolicyGroup[] = [
   },
 ];
 
-const quickPromiseSlugs: PolicySlug[] = [
-  "content-ownership",
-  "account-deletion",
-  "appeals",
-  "monetization-ethics",
-  "ai-policy",
-];
-
 export function LegalIndexPage() {
   return (
     <motion.div
-      className="mx-auto w-full max-w-6xl space-y-6"
+      className="mx-auto w-full max-w-5xl space-y-5"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -965,77 +867,40 @@ export function LegalIndexPage() {
         path="/legal"
       />
 
-      <Panel className="overflow-hidden p-0">
-        <div className="relative grid gap-6 p-5 sm:p-7 lg:grid-cols-[1fr_auto] lg:items-center">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/70 to-transparent" />
-          <div className="min-w-0">
-            <h1 className="text-3xl font-semibold tracking-normal text-text sm:text-5xl">
-              Trust Center
-            </h1>
-            <p className="mt-4 max-w-3xl text-base leading-7 text-muted sm:text-lg">
-              thia.lol exists because users choose to trust us. We do not take
-              that lightly.
-            </p>
-            <p className="mt-4 max-w-3xl text-sm leading-7 text-muted">
-              We put user privacy, safety, transparency, and control before
-              short-term profit. Our users are not products, metrics, inventory,
-              or growth targets. They are people.
-            </p>
-          </div>
-          <BrandLogoMain
-            data-testid="legal-brand-logo-main"
-            size="lg"
-            className="justify-self-start lg:justify-self-end"
-          />
-        </div>
+      <header>
+        <h1 className="text-2xl font-semibold tracking-normal text-text sm:text-3xl">
+          Trust Center
+        </h1>
+      </header>
 
-        <div className="grid gap-px border-t border-line bg-line md:grid-cols-3">
-          <TrustStatement title="Legal layer" body="Required policies, account rules, copyright, payments, and contact paths." />
-          <TrustStatement title="Safety layer" body="Community boundaries, report handling, moderation, appeals, and urgent harm response." />
-          <TrustStatement title="Better layer" body="Public promises against dark patterns, surveillance monetization, and AI media drift." />
-        </div>
-      </Panel>
-
-      <section className="grid gap-4" aria-label="Trust Center policy groups">
+      <section className="grid gap-5" aria-label="Trust Center policy groups">
         {policyGroups.map((group) => (
           <PolicyGroupPanel key={group.title} group={group} />
         ))}
       </section>
 
-      <Panel className="p-5 sm:p-6">
-        <div className="grid gap-4 lg:grid-cols-[1fr_18rem] lg:items-center">
-          <div>
-            <h2 className="text-xl font-semibold text-text">The public promises</h2>
-            <div className="mt-3 grid gap-2">
-              {quickPromiseSlugs.map((slug) => (
-                <p key={slug} className="text-sm leading-6 text-muted">
-                  <span className="font-semibold text-text">{policies[slug].title}:</span>{" "}
-                  {policies[slug].stance}
-                </p>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-card border border-line bg-canvas/45 p-4">
-            <div className="flex items-start gap-3">
-              <Mail aria-hidden="true" className="mt-0.5 text-muted" size={18} />
-              <div>
-                <h2 className="text-sm font-semibold text-text">Contact</h2>
-                <p className="mt-1 text-sm leading-6 text-muted">
-                  Use{" "}
-                  <a
-                    className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
-                    href={`mailto:${contactEmail}`}
-                  >
-                    {contactEmail}
-                  </a>{" "}
-                  for privacy requests, copyright notices, moderation appeals,
-                  safety concerns, refunds, or legal questions.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Panel>
+      <section
+        className="border-t border-line pt-5"
+        aria-labelledby="legal-contact-title"
+      >
+        <h2
+          id="legal-contact-title"
+          className="text-base font-semibold text-text"
+        >
+          Contact
+        </h2>
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
+          Use{" "}
+          <a
+            className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
+            href={`mailto:${contactEmail}`}
+          >
+            {contactEmail}
+          </a>{" "}
+          for privacy requests, copyright notices, moderation appeals, safety
+          concerns, refunds, or legal questions.
+        </p>
+      </section>
     </motion.div>
   );
 }
@@ -1074,11 +939,10 @@ export function ModerationPage() {
 
 function PolicyPage({ slug }: { slug: PolicySlug }) {
   const policy = policies[slug];
-  const Icon = policy.icon;
 
   return (
     <motion.div
-      className="mx-auto w-full max-w-6xl space-y-6"
+      className="mx-auto w-full max-w-6xl space-y-4"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -1089,50 +953,26 @@ function PolicyPage({ slug }: { slug: PolicySlug }) {
         path={`/${slug}`}
       />
 
-      <Panel className="overflow-hidden p-0">
-        <div className="grid gap-5 p-5 sm:p-7 lg:grid-cols-[1fr_auto] lg:items-start">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-sm font-semibold text-muted">
-              <Link
-                to="/legal"
-                className="underline-offset-4 hover:text-text hover:underline"
-              >
-                Trust Center
-              </Link>
-              <ArrowRight aria-hidden="true" size={14} />
-              <span>{policy.label}</span>
-            </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text sm:text-4xl">
-              {policy.title}
-            </h1>
-            <p className="mt-4 max-w-3xl text-base leading-7 text-muted">
-              {policy.description}
-            </p>
-            <p className="mt-4 text-sm text-muted">Last updated: {policy.updated}</p>
-          </div>
-          <div className="flex items-center gap-3 lg:flex-col lg:items-end">
-            <BrandMark
-              className="shadow-soft"
-              data-testid="policy-brand-mark"
-              shape="squircle"
-              size="lg"
-            />
-            <span className="grid size-10 place-items-center rounded-card border border-line bg-canvas/50 text-accent-strong">
-              <Icon aria-hidden="true" size={19} />
-            </span>
-          </div>
-        </div>
+      <header className="min-w-0">
+        <nav aria-label="Breadcrumb">
+          <Link
+            to="/legal"
+            className="app-control inline-flex min-h-11 items-center text-sm font-medium text-muted underline-offset-4 hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          >
+            Trust Center
+          </Link>
+        </nav>
+        <h1 className="mt-1 text-2xl font-semibold tracking-normal text-text sm:text-3xl">
+          {policy.title}
+        </h1>
+        <p className="mt-2 text-sm text-muted">
+          Last updated: {policy.updated}
+        </p>
+      </header>
 
-        <div className="border-t border-line bg-canvas/35 p-5 sm:p-6">
-          <p className="max-w-4xl text-lg font-semibold leading-8 text-text">
-            {policy.stance}
-          </p>
-        </div>
-      </Panel>
+      {slug === "community-guidelines" ? <CommunityConstitution /> : null}
 
-      {slug === "community-guidelines" ? <CommunitySeal /> : null}
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
         <Panel className="divide-y divide-line overflow-hidden">
           {policy.sections.map((section) => (
             <PolicySectionView key={section.title} section={section} />
@@ -1144,94 +984,64 @@ function PolicyPage({ slug }: { slug: PolicySlug }) {
   );
 }
 
-function TrustStatement({ body, title }: { body: string; title: string }) {
-  return (
-    <div className="bg-surface/80 p-4">
-      <h2 className="text-sm font-semibold text-text">{title}</h2>
-      <p className="mt-1 text-sm leading-6 text-muted">{body}</p>
-    </div>
-  );
-}
-
 function PolicyGroupPanel({ group }: { group: PolicyGroup }) {
-  const Icon = group.icon;
+  const headingId = `policy-group-${group.title.toLowerCase().replaceAll(" ", "-")}`;
 
   return (
-    <Panel className="p-4 sm:p-5">
-      <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
-        <div className="flex items-start gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-card border border-line bg-canvas/55 text-accent-strong">
-            <Icon aria-hidden="true" size={18} />
-          </span>
-          <div>
-            <h2 className="text-xl font-semibold text-text">{group.title}</h2>
-            <p className="mt-1 text-sm leading-6 text-muted">{group.description}</p>
-          </div>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {group.links.map((slug) => {
-            const policy = policies[slug];
-            const PolicyIcon = policy.icon;
-
-            return (
-              <Link
-                key={slug}
-                to={`/${slug}`}
-                className="group flex min-h-[5rem] gap-3 rounded-card border border-line bg-canvas/45 p-3 transition duration-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-              >
-                <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control border border-line bg-surface/70 text-muted">
-                  <PolicyIcon aria-hidden="true" size={15} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-text">{policy.title}</span>
-                  <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted">
-                    {policy.stance}
-                  </span>
-                </span>
-                <ArrowRight
-                  aria-hidden="true"
-                  className="mt-1 shrink-0 text-muted transition duration-fluid group-hover:translate-x-0.5 group-hover:text-text"
-                  size={15}
-                />
-              </Link>
-            );
-          })}
-        </div>
+    <section className="grid gap-2" aria-labelledby={headingId}>
+      <h2 id={headingId} className="text-lg font-semibold text-text">
+        {group.title}
+      </h2>
+      <div className="grid gap-px overflow-hidden rounded-panel border border-line bg-line sm:grid-cols-2">
+        {group.links.map((slug) => (
+          <Link
+            key={slug}
+            to={`/${slug}`}
+            className="app-control group flex min-h-11 items-center justify-between gap-3 bg-surface/92 px-3 py-2.5 text-sm font-medium text-text transition duration-fluid hover:bg-canvas focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus"
+          >
+            <span className="min-w-0">{policies[slug].title}</span>
+            <ArrowRight
+              aria-hidden="true"
+              className="shrink-0 text-muted transition duration-fluid group-hover:translate-x-0.5 group-hover:text-text"
+              size={15}
+            />
+          </Link>
+        ))}
       </div>
-    </Panel>
+    </section>
   );
 }
 
-function CommunitySeal() {
+function CommunityConstitution() {
   return (
-    <Panel className="p-5 sm:p-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <BrandMark
-          aria-label="thia.lol bunny seal"
-          className="shadow-soft"
-          shape="squircle"
-          size="md"
-        />
-        <div>
-          <h2 className="text-base font-semibold text-text">Community constitution</h2>
-          <p className="mt-2 text-sm leading-7 text-muted">{communityConstitution}</p>
-        </div>
-      </div>
-    </Panel>
+    <section
+      className="space-y-1.5"
+      aria-labelledby="community-constitution-title"
+    >
+      <h2
+        id="community-constitution-title"
+        className="text-base font-semibold text-text"
+      >
+        Community constitution
+      </h2>
+      <p className="max-w-4xl text-sm leading-7 text-muted">
+        {communityConstitution}
+      </p>
+    </section>
   );
 }
 
 function PolicySectionView({ section }: { section: PolicySection }) {
   return (
-    <section className="p-5 sm:p-6">
+    <section className="p-4 sm:p-5">
       <h2 className="text-xl font-semibold tracking-normal text-text">
         {section.title}
       </h2>
       {section.body ? (
-        <p className="mt-3 text-sm leading-7 text-muted">{section.body}</p>
+        <p className="mt-2 text-sm leading-7 text-muted">{section.body}</p>
       ) : null}
       {section.items ? (
-        <ul className="mt-3 space-y-2 text-sm leading-7 text-muted">
+        <ul className="mt-2 space-y-2 text-sm leading-7 text-muted">
           {section.items.map((item) => (
             <li key={item} className="flex gap-3">
               <span className="mt-3 size-1.5 shrink-0 rounded-full bg-accent" />
@@ -1246,24 +1056,21 @@ function PolicySectionView({ section }: { section: PolicySection }) {
 
 function PolicyLinkGrid({ currentSlug }: { currentSlug?: PolicySlug }) {
   return (
-    <Panel className="p-4 sm:p-5 lg:sticky lg:top-24">
-      <div className="flex items-center gap-2 text-sm font-semibold text-text">
-        <FileText aria-hidden="true" size={17} />
-        Policy pages
-      </div>
-      <div className="mt-4 grid gap-4">
+    <Panel className="p-3 sm:p-4 lg:sticky lg:top-24">
+      <h2 className="text-sm font-semibold text-text">Policies</h2>
+      <div className="mt-3 grid gap-4">
         {policyGroups.map((group) => (
           <div key={group.title}>
-            <h2 className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">
+            <h3 className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">
               {group.title}
-            </h2>
+            </h3>
             <div className="mt-2 grid gap-1.5">
               {group.links.map((slug) => (
                 <Link
                   key={slug}
                   to={`/${slug}`}
                   aria-current={currentSlug === slug ? "page" : undefined}
-                  className="group flex min-h-10 items-center justify-between gap-3 rounded-control border border-transparent px-2.5 py-1.5 text-sm font-medium text-muted transition duration-fluid hover:border-line hover:bg-canvas/45 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus aria-[current=page]:border-line-strong aria-[current=page]:bg-canvas/55 aria-[current=page]:text-text"
+                  className="app-control group flex min-h-11 items-center justify-between gap-3 rounded-control border border-transparent px-2.5 py-1.5 text-sm font-medium text-muted transition duration-fluid hover:border-line hover:bg-canvas/45 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus aria-[current=page]:border-line-strong aria-[current=page]:bg-canvas/55 aria-[current=page]:text-text"
                 >
                   {policies[slug].title}
                   <ArrowRight

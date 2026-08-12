@@ -1,5 +1,6 @@
 import { FileQuestion } from "lucide-react";
 import { cn } from "../../lib/classNames";
+import { distinctContextText } from "../../lib/displayText";
 import { gifAttachmentTitle } from "../../lib/gifs";
 import { safeKlipyUrl } from "../../lib/providerMedia";
 import type {
@@ -164,6 +165,8 @@ function LegacyGifAttachment({ gif }: { gif: GifAttachment }) {
   }
 
   const sourceUrl = safeKlipyUrl(gif.sourceUrl) ?? mediaUrl;
+  const title = gifAttachmentTitle(gif);
+  const displayTitle = distinctContextText(title, "KLIPY GIF");
 
   return (
     <a
@@ -175,15 +178,20 @@ function LegacyGifAttachment({ gif }: { gif: GifAttachment }) {
       data-testid="message-gif-attachment"
     >
       <img
-        alt={gifAttachmentTitle(gif)}
+        alt={title}
         src={mediaUrl}
         className="block max-h-[min(52svh,24rem)] min-w-0 w-full object-contain"
         decoding="async"
         loading="lazy"
         referrerPolicy="no-referrer"
       />
-      <span className="flex min-w-0 items-center justify-between gap-2 px-2.5 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
-        <span className="truncate">{gifAttachmentTitle(gif)}</span>
+      <span
+        className={cn(
+          "flex min-w-0 items-center gap-2 px-2.5 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted",
+          displayTitle ? "justify-between" : "justify-end",
+        )}
+      >
+        {displayTitle ? <span className="truncate">{displayTitle}</span> : null}
         <span className="shrink-0">KLIPY</span>
       </span>
     </a>

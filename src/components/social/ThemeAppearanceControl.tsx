@@ -19,7 +19,6 @@ type ThemeAppearanceControlProps = {
   compact?: boolean | undefined;
   config: ProfileThemeConfig | null | undefined;
   controlAttribute: "data-profile-edit-control" | "data-room-edit-control";
-  description: string;
   label: string;
   previewTitle: string;
   previewSubtitle: string;
@@ -33,7 +32,6 @@ export function ThemeAppearanceControl({
   compact = false,
   config,
   controlAttribute,
-  description,
   label,
   previewLinkLabel,
   previewSubtitle,
@@ -153,7 +151,6 @@ export function ThemeAppearanceControl({
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-text">{label}</p>
-              <p className="mt-0.5 text-xs text-muted">{description}</p>
             </div>
             {!inline ? (
               <button
@@ -223,10 +220,7 @@ export function ThemeAppearanceControl({
 
           <div className="mt-3 rounded-card border border-line bg-canvas/38 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-semibold uppercase text-muted">Custom</p>
-                <p className="text-sm font-semibold text-text">Fine-tune your palette</p>
-              </div>
+              <p className="text-sm font-semibold text-text">Custom</p>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -236,7 +230,7 @@ export function ThemeAppearanceControl({
                   {...controlAttrs}
                 >
                   <Palette aria-hidden="true" size={14} />
-                  Custom
+                  Use custom colors
                 </button>
                 <button
                   type="button"

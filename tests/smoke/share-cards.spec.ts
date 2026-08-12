@@ -24,7 +24,7 @@ test("profile share render uses the real profile canvas treatments and modules",
   await expect(shareCanvas).toBeVisible();
   await expect(shareCanvas).toHaveAttribute(
     "data-share-card-render-version",
-    "screenshot-v9",
+    "screenshot-v10",
   );
   await expect(page.locator("[data-share-card-brand]")).toHaveCSS(
     "height",
@@ -81,7 +81,7 @@ test("profile share render uses the real profile canvas treatments and modules",
     activity
       .getByTestId("profile-activity-tabs")
       .getByRole("tab", { name: /Feed/ }),
-  ).toContainText("2");
+  ).toHaveText("Feed");
   await expect(
     activity.locator("[data-rich-embed-static='true']"),
   ).toHaveCount(1);

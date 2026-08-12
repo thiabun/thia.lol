@@ -33,6 +33,7 @@ import {
   unlikePost,
 } from "../../lib/api";
 import { cn } from "../../lib/classNames";
+import { distinctSecondaryText } from "../../lib/displayText";
 import { safeKlipyUrl, safeProviderImageUrl } from "../../lib/providerMedia";
 import {
   attachSpotifyPlaybackListeners,
@@ -73,6 +74,7 @@ export type PostCardProps = {
   onDeleted?: ((post: Post) => void) | undefined;
   onHide?: (post: Post) => void;
   onReplyAction?: () => void;
+  showDestination?: boolean;
   staticCapture?: boolean;
 };
 
@@ -89,6 +91,7 @@ export function PostCard({
   onDeleted,
   onHide,
   onReplyAction,
+  showDestination = true,
   staticCapture = false,
 }: PostCardProps) {
   const navigate = useNavigate();
@@ -231,7 +234,7 @@ export function PostCard({
               {post.createdAt}
             </Link>
           </div>
-          <PostDestinationLine post={post} />
+          {showDestination ? <PostDestinationLine post={post} /> : null}
         </div>
       </div>
 
@@ -1215,7 +1218,10 @@ function PostMusicPlayerShell({
         "data-post-music-provider": details.provider,
       }}
       statusLabel={statusLabel}
-      subtitle={details.subtitle ?? details.providerLabel}
+      subtitle={distinctSecondaryText(
+        details.title,
+        details.subtitle ?? details.providerLabel,
+      ) ?? null}
       testIdPrefix={`${testId}-music`}
       title={details.title}
     >
@@ -1234,7 +1240,11 @@ function PostIntegrationAttachment({
   const card = attachmentCardObject(attachment.card);
   const metadata = attachmentCardObject(card?.metadata);
   const title = stringValue(metadata?.title) ?? stringValue(card?.title) ?? postIntegrationProviderLabel(attachment.provider);
-  const subtitle = stringValue(metadata?.subtitle) ?? postIntegrationProviderLabel(attachment.provider);
+  const subtitle = distinctSecondaryText(
+    title,
+    stringValue(metadata?.subtitle) ??
+      postIntegrationProviderLabel(attachment.provider),
+  );
   const imageUrl = safeProviderImageUrl(stringValue(metadata?.imageUrl));
   const href = attachment.sourceUrl ?? stringValue(card?.sourceUrl) ?? "#";
 
@@ -1265,7 +1275,9 @@ function PostIntegrationAttachment({
       </span>
       <span className="min-w-0 self-center">
         <span className="block truncate text-sm font-semibold text-text">{title}</span>
-        <span className="mt-1 block truncate text-xs text-muted">{subtitle}</span>
+        {subtitle ? (
+          <span className="mt-1 block truncate text-xs text-muted">{subtitle}</span>
+        ) : null}
       </span>
     </a>
   );
@@ -1362,10 +1374,12 @@ function postMusicAttachmentDetails(
   const providerLabel = postIntegrationProviderLabel(provider);
   const title = stringValue(metadata?.title) ?? stringValue(card?.title) ?? providerLabel;
   const rawSubtitle = stringValue(metadata?.subtitle);
-  const subtitle =
+  const subtitle = distinctSecondaryText(
+    title,
     provider === "youtube" && rawSubtitle === "YouTube"
       ? providerLabel
-      : rawSubtitle ?? providerLabel;
+      : rawSubtitle ?? providerLabel,
+  ) ?? null;
   const sourceUrl = attachment.sourceUrl ?? stringValue(card?.sourceUrl);
   const resourceType = stringValue(attachment.resourceType) ?? stringValue(card?.resourceType);
   const resourceId = stringValue(attachment.resourceId) ?? stringValue(card?.resourceId);
@@ -1587,28 +1601,18 @@ function attachmentFileLabel(value: string | null | undefined): string | null {
   }
 }
 function PostDestinationLine({ post }: { post: Post }) {
-  if (post.room) {
-    return (
-      <p className="mt-0.5 truncate text-xs text-muted">
-        in{" "}
-        <Link
-          to={`/rooms/${post.room.slug}`}
-          className="font-medium text-muted underline-offset-4 hover:text-accent-strong hover:underline"
-        >
-          {post.room.name}
-        </Link>
-      </p>
-    );
+  if (!post.room) {
+    return null;
   }
 
   return (
     <p className="mt-0.5 truncate text-xs text-muted">
       in{" "}
       <Link
-        to={`/@${post.author.handle}`}
+        to={`/rooms/${post.room.slug}`}
         className="font-medium text-muted underline-offset-4 hover:text-accent-strong hover:underline"
       >
-        Profile feed
+        {post.room.name}
       </Link>
     </p>
   );
@@ -1769,7 +1773,6 @@ function ReactionControls({
                 postId={post.id}
                 reportedUserId={post.author.id}
                 title="Report post"
-                explainer="This reports the post to moderators."
                 triggerMode="icon"
                 triggerLabel="Report post"
                 triggerClassName="size-11 rounded-control sm:size-9"

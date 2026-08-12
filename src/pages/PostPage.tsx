@@ -1,8 +1,7 @@
-import { ArrowLeft, LoaderCircle, MessageCircle, WifiOff } from "lucide-react";
+import { ArrowLeft, LoaderCircle, WifiOff } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import {
-  Link,
   useLocation,
   useNavigate,
   useOutletContext,
@@ -15,6 +14,7 @@ import { Button, ButtonLink } from "../components/ui/Button";
 import { RouteStateNotice } from "../components/ui/RouteState";
 import { getPost, postCanonicalPath } from "../lib/api";
 import { pageEntrance } from "../lib/motionPresets";
+import { distinctContextText } from "../lib/displayText";
 import { applyProfileThemeToRoot } from "../lib/profileThemes";
 import type { Post } from "../lib/types";
 
@@ -151,7 +151,6 @@ export function PostPage() {
           icon={LoaderCircle}
           kind="loading"
           title="Opening thread"
-          text="Finding the conversation around this post."
         />
       </motion.div>
     );
@@ -180,7 +179,11 @@ export function PostPage() {
         path={postCanonicalPath(requestedPost)}
       />
 
-      <header className="sticky top-0 z-20 -mx-2 flex min-h-14 items-center gap-3 border-b border-line/75 bg-canvas/88 px-2 py-2 backdrop-blur-veil sm:static sm:mx-0 sm:rounded-card sm:border sm:bg-surface/58 sm:px-3">
+      <header
+        className="sticky top-0 z-20 -mx-2 flex min-h-11 items-center border-b border-line/75 bg-canvas/88 px-2 py-1 backdrop-blur-veil sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0"
+        aria-label="Thread navigation"
+      >
+        <h1 className="sr-only">Thread</h1>
         <Button
           type="button"
           variant="ghost"
@@ -197,22 +200,6 @@ export function PostPage() {
             }
           }}
         />
-        <div className="min-w-0 flex-1">
-          <h1 className="text-base font-semibold text-text">Thread</h1>
-          <p className="truncate text-xs text-muted">
-            Started by{" "}
-            <Link
-              to={`/@${rootPost.author.handle}`}
-              className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
-            >
-              @{rootPost.author.handle}
-            </Link>
-          </p>
-        </div>
-        <span className="inline-flex min-h-8 items-center gap-1.5 rounded-full bg-surface-strong/55 px-2.5 text-xs font-medium text-muted">
-          <MessageCircle aria-hidden="true" size={14} />
-          {replyCountLabel(rootPost.commentCount)}
-        </span>
       </header>
 
       <ThreadView
@@ -271,6 +258,12 @@ function PostUnavailableNotice({
   handle: string;
   text: string;
 }) {
+  const usefulText = distinctContextText(
+    text,
+    "Post not available",
+    "Post not found",
+  );
+
   return (
     <motion.div
       className="mx-auto flex w-full max-w-[46rem] flex-col gap-6"
@@ -287,7 +280,7 @@ function PostUnavailableNotice({
         icon={WifiOff}
         kind="error"
         title="Post not available"
-        text={text}
+        {...(usefulText ? { text: usefulText } : {})}
         actions={
           <ButtonLink to="/discover" size="sm" variant="secondary">
             Back to Discover
@@ -296,8 +289,4 @@ function PostUnavailableNotice({
       />
     </motion.div>
   );
-}
-
-function replyCountLabel(count: number) {
-  return count === 1 ? "1 reply" : `${count} replies`;
 }

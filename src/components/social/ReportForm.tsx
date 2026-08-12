@@ -12,7 +12,6 @@ type ReportFormProps = {
   targetType: ReportTargetType;
   targetId: number;
   title: string;
-  explainer: string;
   disabled?: boolean;
   postId?: number;
   reportedUserId?: number | undefined;
@@ -29,7 +28,6 @@ type ReportFormProps = {
 export function ReportForm({
   className,
   disabled = false,
-  explainer,
   feedbackClassName,
   formClassName,
   postId,
@@ -136,7 +134,6 @@ export function ReportForm({
         open={open}
         onClose={() => setOpen(false)}
         title={title}
-        description={explainer}
         closeLabel={`Close ${title.toLowerCase()}`}
         size="md"
         mobile="sheet"

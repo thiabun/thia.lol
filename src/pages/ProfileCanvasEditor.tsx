@@ -45,7 +45,6 @@ import {
   type ProfileStudioTool,
 } from "../components/social/profile-editor/ProfileStudioShell";
 import { Avatar } from "../components/ui/Avatar";
-import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { ImageCropModal } from "../components/ui/ImageCropModal";
 import { ModalSheet } from "../components/ui/ModalSheet";
@@ -372,8 +371,7 @@ function ProfileEditorCoachmarkTour({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <Badge tone="cool">{step.target}</Badge>
-          <h2 className="mt-2 text-lg font-semibold text-text">{step.title}</h2>
+          <h2 className="text-lg font-semibold text-text">{step.title}</h2>
           <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-muted">
             {step.body}
           </p>
@@ -481,16 +479,6 @@ function ProfileCanvasSelectionExamples({
       )}
       data-testid="profile-canvas-selection-examples"
     >
-      {!tiny && size ? (
-        <motion.p
-          className="max-w-full truncate rounded-full border border-focus/35 bg-canvas/72 px-2 py-0.5 text-[0.68rem] font-semibold uppercase text-text shadow-soft"
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.14 }}
-        >
-          Fits {size}
-        </motion.p>
-      ) : null}
       <div
         className={cn(
           "flex max-h-full max-w-full flex-wrap items-center justify-center overflow-hidden",
@@ -1676,33 +1664,7 @@ export function ProfileDirectCanvasEditor({
         onUpdateConfig={handleModuleConfig}
       />
     ) : (
-      <div className="space-y-4 p-4" data-testid="profile-studio-overview">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Canvas
-          </p>
-          <h2 className="mt-1 text-base font-semibold text-text">
-            Make the space yours
-          </h2>
-          <p className="mt-1 text-sm leading-5 text-muted">
-            Select a module to edit it, or add something new to the first open
-            space.
-          </p>
-        </div>
-        <div className="grid gap-2 rounded-card border border-line bg-canvas/38 p-3 text-xs text-muted">
-          <p className="flex items-center justify-between gap-3">
-            <span>Visible modules</span>
-            <strong className="text-text">{sortedModules.length}</strong>
-          </p>
-          <p className="flex items-center justify-between gap-3">
-            <span>Canvas</span>
-            <strong className="text-text">12 × 16</strong>
-          </p>
-          <p className="flex items-center justify-between gap-3">
-            <span>Glass</span>
-            <strong className="text-text">{draft.canvasGlass}%</strong>
-          </p>
-        </div>
+      <div className="p-3" data-testid="profile-studio-overview">
         <Button
           type="button"
           className="w-full"
@@ -1742,7 +1704,9 @@ export function ProfileDirectCanvasEditor({
               </h2>
               <p
                 className={cn(
-                  "truncate text-xs font-medium",
+                  autosaveState === "error" || autosaveState === "saving"
+                    ? "truncate text-xs font-medium"
+                    : "sr-only",
                   autosaveState === "error" ? "text-rose-ink" : "text-muted",
                 )}
                 role={autosaveState === "error" ? "alert" : "status"}
@@ -1828,10 +1792,7 @@ export function ProfileDirectCanvasEditor({
         </div>
 
         <div className="flex min-h-11 items-center justify-between gap-3 pt-1">
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-text">Modules</h3>
-            <p className="text-xs text-muted">One readable section at a time.</p>
-          </div>
+          <h3 className="text-sm font-semibold text-text">Modules</h3>
           <Button
             type="button"
             size="sm"
@@ -2335,9 +2296,7 @@ export function ProfileDirectCanvasEditor({
                 (layout.colSpan <= 2 || layout.rowSpan <= 1);
               const placeholderLabel = placeholderMicro
                 ? "Add"
-                : placeholderSmall
-                  ? "Add module"
-                  : "Click to add module";
+                : "Add module";
               const moduleTitle = profileModuleFallbackTitle(module.type);
               const selectedDesktop =
                 settingsModuleId === module.id || pickerModuleId === module.id;
@@ -3094,9 +3053,7 @@ function ProfileModuleRemovalConfirmation({
         </div>
       }
     >
-      <p className="text-sm leading-6 text-muted">
-        Your published profile is unchanged until the canvas is saved.
-      </p>
+      {null}
     </ModalSheet>
   );
 }
@@ -3175,7 +3132,6 @@ function ModulePickerModal({
       open={Boolean(module)}
       onClose={handleClose}
       title="Add module"
-      description="Choose what belongs here, then drag it into place."
       presentation={presentation}
       testId="profile-module-picker"
     >
@@ -3958,7 +3914,6 @@ function ModuleSettingsModal({
       open={Boolean(module)}
       onClose={handleClose}
       title={module ? profileModuleFallbackTitle(module.type) : "Module settings"}
-      description={definition?.description}
       presentation={presentation}
       testId="profile-module-settings"
       footer={
@@ -4223,10 +4178,7 @@ function ModuleSettingsModal({
               className="space-y-3"
               data-testid="profile-connections-settings"
             >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase text-muted">
-                  Connections
-                </p>
+              <div className="flex justify-end">
                 <Button
                   type="button"
                   size="sm"
@@ -4702,9 +4654,8 @@ function ModuleSettingsModal({
             <div className="rounded-card border border-line bg-canvas/45 p-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-text">Connect</p>
-                  <p className="mt-1 text-xs font-medium text-muted">
-                    Connect {providerLabel} for authenticated provider data.
+                  <p className="text-xs font-medium text-muted">
+                    Authenticated {providerLabel} data requires a connection.
                   </p>
                 </div>
                 <Button

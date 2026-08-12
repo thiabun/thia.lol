@@ -41,10 +41,14 @@ test("public legal and trust pages load", async ({ page }) => {
       page.getByRole("heading", { name: legalPage.heading, level: 1 }),
     ).toBeVisible();
 
-    if (legalPage.path === "/legal") {
-      await expect(page.getByTestId("legal-brand-logo-main")).toBeVisible();
-    } else {
-      await expect(page.getByTestId("policy-brand-mark")).toBeVisible();
+    await expect(page.getByTestId("legal-brand-logo-main")).toHaveCount(0);
+    await expect(page.getByTestId("policy-brand-mark")).toHaveCount(0);
+
+    if (legalPage.path !== "/legal") {
+      await expect(page.getByText(/^Last updated:/)).toBeVisible();
+      await expect(
+        page.getByRole("navigation", { name: "Breadcrumb" }),
+      ).toContainText("Trust Center");
     }
   }
 });
@@ -58,15 +62,12 @@ test("legal contact route resolves to the legal index", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("footer and account menu expose legal links discreetly", async ({ page }) => {
+test("policy pages avoid duplicating legal navigation in the footer", async ({ page }) => {
   await page.goto("/privacy");
 
   const footer = page.getByTestId("site-footer");
   await expect(footer).toContainText(
-    "© 2026 Thia Markussen. Alle rettigheter forbeholdt / All rights reserved.",
-  );
-  await expect(footer).toContainText(
-    "Beskyttet etter norsk opphavsrett og internasjonal opphavsrett / Protected under Norwegian and international copyright law.",
+    "© 2026 Thia Markussen. All rights reserved.",
   );
 
   const footerLinks = page.getByTestId("legal-footer-links");
@@ -74,21 +75,21 @@ test("footer and account menu expose legal links discreetly", async ({ page }) =
   await expect(page.getByTestId("site-footer-brand-lockup")).toHaveCount(0);
   await expect(footerLinks).toBeVisible();
 
-  for (const label of [
-    "Trust Center",
-    "Terms",
-    "Privacy",
-    "Guidelines",
-  ]) {
-    await expect(footerLinks.getByRole("link", { name: label })).toBeVisible();
+  for (const label of ["Trust Center", "Terms", "Privacy", "Guidelines"]) {
+    await expect(footerLinks.getByRole("link", { name: label })).toHaveCount(0);
   }
+
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText(
+    "Trust Center",
+  );
+  await expect(page.getByRole("heading", { name: "Policies" })).toBeVisible();
 
   await expect(footerLinks.getByRole("link", { name: "Report a bug" })).toHaveAttribute(
     "href",
     bugReportUrl,
   );
   await expect(
-    footerLinks.getByRole("link", { name: "Hey, want to support thia.lol?" }),
+    footerLinks.getByRole("link", { name: "Support thia.lol" }),
   ).toHaveAttribute("href", supportUrl);
 
   await page.getByRole("button", { name: /account menu/i }).click();
@@ -107,7 +108,7 @@ test("cookie notice explains necessary cookies and can be dismissed", async ({
 
   const notice = page.getByTestId("cookie-notice");
   await expect(notice).toBeVisible();
-  await expect(page.getByTestId("cookie-brand-mark")).toBeVisible();
+  await expect(page.getByTestId("cookie-brand-mark")).toHaveCount(0);
   await expect(notice).toContainText("necessary cookies");
   await expect(notice).toContainText("No analytics or marketing cookies");
   await expect(notice.getByRole("link", { name: "Cookie policy" })).toBeVisible();
@@ -177,9 +178,14 @@ test("trust center groups policies around rights, safety, promises, and operatio
 
   await expect(page.getByRole("link", { name: /Data Export/i })).toBeVisible();
   await expect(page.getByRole("link", { name: /AI Policy/i })).toBeVisible();
-  await expect(page.locator("body")).toContainText(
+  await expect(page.getByRole("heading", { name: "Contact" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "hello@thia.lol" }),
+  ).toBeVisible();
+  await expect(page.locator("body")).not.toContainText(
     "thia.lol exists because users choose to trust us.",
   );
+  await expect(page.locator("body")).not.toContainText("The public promises");
 });
 
 test("privacy and terms explain user-first data and content rules", async ({
@@ -220,6 +226,7 @@ test("guidelines, moderation, appeals, and AI policy cover trust promises", asyn
     page.getByRole("heading", { name: "Community Guidelines", level: 1 }),
   ).toBeVisible();
   await expect(page.getByText("Community constitution")).toBeVisible();
+  await expect(page.getByLabel("thia.lol bunny seal")).toHaveCount(0);
   const communityGuidelinesText = await page.locator("body").innerText();
   expect(
     communityGuidelinesText.match(/Adults can be messy, funny, flirty, weird/g) ?? [],
@@ -234,10 +241,14 @@ test("guidelines, moderation, appeals, and AI policy cover trust promises", asyn
   ).toBeVisible();
   const moderationText = await page.locator("body").innerText();
   expect(moderationText).toContain("Logged-in users can report posts, replies, profiles, rooms, and chat messages");
-  expect(moderationText).toContain("give users a meaningful way to appeal");
+  expect(moderationText).toContain(
+    "Appeals are available through the Appeals Policy contact path",
+  );
 
   await page.goto("/appeals");
-  await expect(page.locator("body")).toContainText("We can make mistakes. You can challenge decisions.");
+  await expect(page.locator("body")).toContainText(
+    "If we were wrong, we will correct the decision",
+  );
 
   await page.goto("/ai-policy");
   await expect(page.locator("body")).toContainText("AI-generated media is not allowed");
@@ -278,11 +289,10 @@ test("settings can download a mocked account data export", async ({ page }) => {
     page.getByRole("heading", { name: "Data rights" }),
   ).toBeVisible();
   const dataRights = page.locator("#data-rights");
-  await dataRights.locator("summary", { hasText: "Download account data" }).click();
   await dataRights.getByLabel("Current password").fill("correct-password");
 
   const downloadPromise = page.waitForEvent("download");
-  await dataRights.getByRole("button", { name: "Download export" }).click();
+  await dataRights.getByRole("button", { name: "Download JSON" }).click();
   const download = await downloadPromise;
 
   expect(download.suggestedFilename()).toMatch(

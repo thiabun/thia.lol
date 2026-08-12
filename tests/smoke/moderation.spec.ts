@@ -12,25 +12,18 @@ test("report modal opens with categories and legal links", async ({ page }) => {
   await expect(reportDialog.getByLabel("What's wrong?")).toBeVisible();
   await expect(
     reportDialog.getByRole("link", { name: "Community Guidelines" }),
-  ).toHaveAttribute(
-    "href",
-    "/community-guidelines",
-  );
+  ).toHaveAttribute("href", "/community-guidelines");
   await expect(
     reportDialog.getByRole("link", { name: "Moderation Policy" }),
-  ).toHaveAttribute(
-    "href",
-    "/moderation",
+  ).toHaveAttribute("href", "/moderation");
+  await expect(page.locator("article").first().getByRole("dialog")).toHaveCount(
+    0,
   );
-  await expect(page.locator("article").first().getByRole("dialog")).toHaveCount(0);
 
   await reportDialog.getByLabel("What's wrong?").selectOption("copyright");
   await expect(
     reportDialog.getByRole("link", { name: "Copyright Policy" }),
-  ).toHaveAttribute(
-    "href",
-    "/copyright",
-  );
+  ).toHaveAttribute("href", "/copyright");
 
   await page.keyboard.press("Escape");
   await expect(reportDialog).toBeHidden();
@@ -59,7 +52,9 @@ test("report category selector submits a post report", async ({ page }) => {
   await reportDialog
     .getByLabel("Add details")
     .fill("This includes private information.");
-  await reportDialog.getByRole("button", { name: "Report", exact: true }).click();
+  await reportDialog
+    .getByRole("button", { name: "Report", exact: true })
+    .click();
 
   await expect(page.getByText("Report sent.")).toBeVisible();
   expect(reportPayload).toMatchObject({
@@ -97,9 +92,11 @@ test("profile report submits the profile target", async ({ page }) => {
   await page.getByRole("button", { name: "Report profile" }).click();
   const reportDialog = page.getByRole("dialog", { name: "Report profile" });
 
-  await expect(reportDialog).toContainText("reports @alex's profile");
+  await expect(reportDialog).not.toContainText("reports @alex's profile");
   await reportDialog.getByLabel("What's wrong?").selectOption("impersonation");
-  await reportDialog.getByRole("button", { name: "Report", exact: true }).click();
+  await reportDialog
+    .getByRole("button", { name: "Report", exact: true })
+    .click();
 
   await expect(page.getByText("Report sent.")).toBeVisible();
   expect(reportPayload).toMatchObject({
@@ -134,9 +131,11 @@ test("room report submits the room target", async ({ page }) => {
   await page.getByRole("button", { name: "Report" }).click();
   const reportDialog = page.getByRole("dialog", { name: "Report room" });
 
-  await expect(reportDialog).toContainText("reports /general");
+  await expect(reportDialog).not.toContainText("reports /general");
   await reportDialog.getByLabel("What's wrong?").selectOption("spam_or_scam");
-  await reportDialog.getByRole("button", { name: "Report", exact: true }).click();
+  await reportDialog
+    .getByRole("button", { name: "Report", exact: true })
+    .click();
 
   await expect(page.getByText("Report sent.")).toBeVisible();
   expect(reportPayload).toMatchObject({
@@ -154,7 +153,9 @@ test("report submit requires auth", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Report post" }).click();
   const reportDialog = page.getByRole("dialog", { name: "Report post" });
-  await reportDialog.getByRole("button", { name: "Report", exact: true }).click();
+  await reportDialog
+    .getByRole("button", { name: "Report", exact: true })
+    .click();
 
   await expect(reportDialog.getByText("Log in to continue.")).toBeVisible();
 });
@@ -165,19 +166,26 @@ test("admin report queue renders open reports first", async ({ page }) => {
 
   await page.goto("/admin");
 
-  await expect(page.getByRole("heading", { name: "Report queue" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Reported post" })).toBeVisible();
-  await expect(page.getByText("Private information", { exact: true })).toBeVisible();
-  await expect(page.getByText("Target summary")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Viewer (@viewer)" })).toHaveAttribute(
-    "href",
-    "/@viewer",
-  );
-  await expect(page.getByRole("link", { name: "Alex (@alex)" }).first()).toHaveAttribute(
-    "href",
-    "/@alex",
-  );
-  await expect(page.getByRole("button", { name: "Mark reviewed" })).toBeVisible();
+  await expect(page.getByTestId("admin-page")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Report queue" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Reported post" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Private information", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Target summary")).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Viewer (@viewer)" }),
+  ).toHaveAttribute("href", "/@viewer");
+  await expect(
+    page.getByRole("link", { name: "Alex (@alex)" }).first(),
+  ).toHaveAttribute("href", "/@alex");
+  await expect(
+    page.getByRole("button", { name: "Mark reviewed" }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Dismiss" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Hide post" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Remove post" })).toBeVisible();
@@ -232,11 +240,20 @@ test("admin report queue renders profile, room, and message summaries", async ({
 
   await page.goto("/admin");
 
-  await expect(page.getByRole("heading", { name: "Reported profile" })).toBeVisible();
-  await expect(page.getByText("Alex (@alex) · active")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Reported room" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Reported profile" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Alex (@alex)" }).first(),
+  ).toBeVisible();
+  await expect(page.getByText("member · active").first()).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Reported room" }),
+  ).toBeVisible();
   await expect(page.getByText("/general · public · not live")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Reported message" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Reported message" }),
+  ).toBeVisible();
   await expect(page.getByText("unsafe private message")).toBeVisible();
 });
 
@@ -263,6 +280,7 @@ test("admin actions are gated", async ({ page }) => {
 
   await page.goto("/admin");
 
+  await expect(page.getByTestId("admin-page")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Moderator access required" }),
   ).toBeVisible();
@@ -306,6 +324,35 @@ async function mockAuthenticatedApi(page: Page, role: "admin" | "member") {
           },
           csrfToken: "test-csrf",
         },
+      }),
+    }),
+  );
+  await page.route("**/api/me/onboarding", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          steps: [],
+          completedSteps: [],
+          skippedSteps: [],
+          providerLinks: {},
+          finishedAt: "2026-06-10 10:00:00",
+          dismissedAt: null,
+          createdAt: "2026-06-10 09:00:00",
+          updatedAt: "2026-06-10 10:00:00",
+        },
+      }),
+    }),
+  );
+  await page.route("**/api/me/integrations", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { providers: [], accounts: [] },
       }),
     }),
   );
@@ -360,6 +407,20 @@ async function mockHomeFeed(page: Page) {
       }),
     }),
   );
+  await page.route(/\/api\/feed\/discover\?view=landing$/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [makePost()],
+          activeRooms: [],
+          peopleToWatch: [],
+          nextCursor: null,
+        },
+      }),
+    }),
+  );
 }
 
 async function mockProfileReportApi(page: Page) {
@@ -373,7 +434,10 @@ async function mockProfileReportApi(page: Page) {
   await page.route("**/api/profiles/alex/badges", (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: { badges: [], featuredBadges: [] } }),
+      body: JSON.stringify({
+        ok: true,
+        data: { badges: [], featuredBadges: [] },
+      }),
     }),
   );
   for (const suffix of ["posts", "replies", "reblogs", "rooms", "modules"]) {
@@ -427,7 +491,27 @@ async function mockAdminApi(page: Page, reports = [makeReport()]) {
   await page.route("**/api/admin/badges", (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: { badges: [], recentGrants: [] } }),
+      body: JSON.stringify({
+        ok: true,
+        data: { badges: [], recentGrants: [] },
+      }),
+    }),
+  );
+  await page.route("**/api/admin/growth", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          windowDays: 30,
+          totalSignups: 0,
+          attributedSignups: 0,
+          bySource: [],
+          byCampaign: [],
+          byShareKind: [],
+          topSharedEntities: [],
+        },
+      }),
     }),
   );
 }

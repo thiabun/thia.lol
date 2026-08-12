@@ -7,10 +7,9 @@ import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { SearchField } from "../components/ui/Field";
-import { RouteHeader } from "../components/ui/RouteState";
 import { RoomCard } from "../components/social/RoomCard";
 import { createRoom, getRooms, previewImageUpload, uploadImage } from "../lib/api";
-import { cardEntrance, pageEntrance } from "../lib/motionPresets";
+import { pageEntrance } from "../lib/motionPresets";
 import type { ImageUploadPurpose, RoomInput } from "../lib/api";
 import type { Room } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
@@ -93,44 +92,32 @@ export function RoomsPage() {
         path="/rooms"
       />
 
-      <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-        <RouteHeader
-          surface="bare"
-          title="Rooms"
-          description="Shared places for posts."
-          actions={
-            <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto lg:min-w-[28rem]">
-              <SearchField
-                id="room-search"
-                label="Search rooms"
-                placeholder="Search rooms"
-                className="w-full"
-                value={query}
-                onChange={(event) => setQuery(event.currentTarget.value)}
-              />
-              {user ? (
-                <Button
-                  type="button"
-                  className="w-full shrink-0 sm:w-auto"
-                  size="sm"
-                  data-testid="create-room-button"
-                  icon={<Plus aria-hidden="true" size={17} />}
-                  onClick={() => setCreateOpen(true)}
-                >
-                  Create room
-                </Button>
-              ) : null}
-            </div>
-          }
+      <h1 className="sr-only">Rooms</h1>
+      <div className="flex w-full flex-col gap-2 sm:flex-row" data-testid="rooms-toolbar">
+        <SearchField
+          id="room-search"
+          label="Search rooms"
+          placeholder="Search rooms"
+          className="w-full"
+          value={query}
+          onChange={(event) => setQuery(event.currentTarget.value)}
         />
-      </motion.div>
+        {user ? (
+          <Button
+            type="button"
+            className="w-full shrink-0 sm:w-auto"
+            size="sm"
+            data-testid="create-room-button"
+            icon={<Plus aria-hidden="true" size={17} />}
+            onClick={() => setCreateOpen(true)}
+          >
+            Create room
+          </Button>
+        ) : null}
+      </div>
 
       {roomsState.loading ? (
-        <ApiStateNotice
-          kind="loading"
-          title="Loading rooms"
-          text="Loading rooms."
-        />
+        <ApiStateNotice kind="loading" title="Loading rooms" />
       ) : null}
 
       {roomsState.error ? (
@@ -142,11 +129,7 @@ export function RoomsPage() {
       ) : null}
 
       {!roomsState.loading && !roomsState.error && rooms.length === 0 ? (
-        <EmptyState
-          icon={Radio}
-          title="No public rooms yet"
-          text="No public rooms."
-        />
+        <EmptyState icon={Radio} title="No public rooms yet" />
       ) : null}
 
       {!roomsState.loading &&

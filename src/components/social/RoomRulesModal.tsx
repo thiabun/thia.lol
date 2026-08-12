@@ -1,4 +1,3 @@
-import { ScrollText } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../ui/Button";
 import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
@@ -35,11 +34,6 @@ export function RoomRulesModal({
     <ModalSheet
       busy={busy}
       closeLabel="Close room rules"
-      description={
-        requiresAgreement
-          ? `Review /${room.slug}'s rules before continuing.`
-          : `You can review /${room.slug}'s rules at any time.`
-      }
       footer={
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button type="button" variant="secondary" disabled={busy} onClick={onClose}>
@@ -64,20 +58,6 @@ export function RoomRulesModal({
       title="Room rules"
     >
       <div className="space-y-4">
-        <div className="flex items-center gap-3 rounded-card border border-line bg-canvas/45 p-3">
-          <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-control border border-line bg-surface-strong text-muted">
-            {room.iconUrl ? (
-              <img alt="" className="size-full object-cover" src={room.iconUrl} />
-            ) : (
-              <ScrollText aria-hidden="true" size={18} />
-            )}
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-text">{room.name}</p>
-            <p className="truncate text-xs text-muted">/{room.slug}</p>
-          </div>
-        </div>
-
         <div
           className="max-h-[min(48dvh,24rem)] overflow-y-auto rounded-card border border-line bg-canvas/35 p-4"
           data-testid="room-rules-content"

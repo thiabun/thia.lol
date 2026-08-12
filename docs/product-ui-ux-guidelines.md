@@ -201,7 +201,7 @@ readability before adding vertical space.
 
 Prefer:
 
-- short route headers
+- direct route controls, navigation, or primary content
 - dense but readable rows
 - grouped controls with clear hierarchy
 - modest panel padding
@@ -216,6 +216,7 @@ Avoid:
 - page sections styled as floating cards
 - excessive whitespace used as a substitute for hierarchy
 - repeated panels with the same visual weight
+- page heroes or introductory panels that restate the route purpose
 
 Large space is allowed for focused editors, thread reading, room editing,
 profile customization, and full-screen mobile sheets. Even then, keep the
@@ -258,7 +259,6 @@ Use existing shared primitives first:
 - shared field components
 - `ModalSheet`
 - `Panel`
-- `RouteHeader`
 - `RouteStateNotice`
 - `CompactStateNotice`
 - `ApiStateNotice`
@@ -539,7 +539,7 @@ empty space. Respect reduced-motion settings and prefer shared presets from
 
 | Good | Bad |
 | --- | --- |
-| One route header, one clear action group. | Route header plus multiple equal subheaders before content. |
+| Primary controls or content begin the route directly. | A page hero or explainer delays the route's usable content. |
 | Compact post rows with one action row. | Repeated oversized action buttons under every post. |
 | Room cards with identity, summary, and one calm theme tint. | Decorative stripes, arrows, badges, and stats all competing. |
 | Real counts from API-backed data. | Fake metrics added for visual balance. |

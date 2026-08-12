@@ -21,7 +21,7 @@ type ModalSheetProps = {
   // Non-busy sheets close on Escape and overlay press by default.
   // Busy sheets keep focus and require the active task to finish first.
   busy?: boolean;
-  children: ReactNode;
+  children?: ReactNode;
   closeLabel?: string;
   closeOnEscape?: boolean;
   closeOnOutsideClick?: boolean;
@@ -293,14 +293,16 @@ export function ModalSheet({
               titleId={titleId}
             />
 
-            <div
-              className={cn(
-                "min-h-0 flex-1 overflow-y-auto px-4 py-4 lg:px-5",
-                bodyClassName,
-              )}
-            >
-              {children}
-            </div>
+            {children !== null && children !== undefined && children !== false ? (
+              <div
+                className={cn(
+                  "min-h-0 flex-1 overflow-y-auto px-4 py-4 lg:px-5",
+                  bodyClassName,
+                )}
+              >
+                {children}
+              </div>
+            ) : null}
 
             {footer ? (
               <div

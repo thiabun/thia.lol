@@ -315,19 +315,14 @@ export function RoomChannelSettings({
       aria-labelledby="room-channel-settings-title"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <Hash aria-hidden="true" size={17} className="text-muted" />
-            <h3
-              id="room-channel-settings-title"
-              className="text-sm font-semibold text-text"
-            >
-              Chat channels
-            </h3>
-          </div>
-          <p className="mt-1 text-xs leading-5 text-muted">
-            Organize conversations inside this room. Channel changes save immediately.
-          </p>
+        <div className="flex items-center gap-2">
+          <Hash aria-hidden="true" size={17} className="text-muted" />
+          <h3
+            id="room-channel-settings-title"
+            className="text-sm font-semibold text-text"
+          >
+            Chat channels
+          </h3>
         </div>
         <Button
           type="button"
@@ -351,7 +346,6 @@ export function RoomChannelSettings({
           icon={LoaderCircle}
           kind="loading"
           title="Loading chat channels"
-          text="Loading channels."
         />
       ) : null}
 
@@ -379,7 +373,6 @@ export function RoomChannelSettings({
         <CompactStateNotice
           icon={Hash}
           title="No chat channels"
-          text="Add a channel to start room chat."
         />
       ) : null}
 

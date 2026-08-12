@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { cn } from "../../lib/classNames";
+import { distinctSecondaryText } from "../../lib/displayText";
 import type { RichLinkCard, RichTextEntity } from "../../lib/types";
 
 type RichTextProps = {
@@ -994,7 +995,10 @@ function RichProviderStaticPreview({ card }: { card: RichLinkCard }) {
   const provider = card.provider as RichEmbedProvider;
   const providerLabel = richEmbedProviderLabel(provider);
   const title = card.metadata.title?.trim() || card.embed?.title || providerLabel;
-  const subtitle = card.metadata.subtitle?.trim() || providerLabel;
+  const subtitle = distinctSecondaryText(
+    title,
+    card.metadata.subtitle?.trim() || providerLabel,
+  );
   const imageUrl = richProviderStaticImage(card);
   const videoLike = provider === "youtube" || provider === "twitch";
 
@@ -1028,7 +1032,11 @@ function RichProviderStaticPreview({ card }: { card: RichLinkCard }) {
           <span className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/24 to-black/18" />
           <span className="absolute inset-x-0 bottom-0 z-10 block p-3 text-white">
             <span className="block truncate text-sm font-semibold">{title}</span>
-            <span className="mt-0.5 block truncate text-xs text-white/72">{subtitle}</span>
+            {subtitle ? (
+              <span className="mt-0.5 block truncate text-xs text-white/72">
+                {subtitle}
+              </span>
+            ) : null}
           </span>
         </>
       ) : (
@@ -1050,7 +1058,11 @@ function RichProviderStaticPreview({ card }: { card: RichLinkCard }) {
           </span>
           <span className="min-w-0 self-center p-3">
             <span className="block truncate text-sm font-semibold text-text">{title}</span>
-            <span className="mt-1 block truncate text-xs text-muted">{subtitle}</span>
+            {subtitle ? (
+              <span className="mt-1 block truncate text-xs text-muted">
+                {subtitle}
+              </span>
+            ) : null}
           </span>
         </>
       )}

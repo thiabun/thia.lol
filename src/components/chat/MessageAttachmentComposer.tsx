@@ -25,6 +25,7 @@ import {
   uploadVideo,
 } from "../../lib/api";
 import { cn } from "../../lib/classNames";
+import { distinctSecondaryText } from "../../lib/displayText";
 import { prepareImageFileForCrop } from "../../lib/imageCrop";
 import {
   audioUploadFormatHelp,
@@ -669,10 +670,6 @@ function MessageAttachmentPreview({
             src={attachment.url}
           />
         )}
-
-        <span className="absolute left-2 top-2 rounded-full border border-line bg-surface/92 px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-muted shadow-soft">
-          {attachmentLabel(attachment)} {index + 1}
-        </span>
       </div>
 
       <div className="flex min-w-0 items-center justify-end gap-1 border-t border-line p-1">
@@ -721,8 +718,11 @@ function MessageIntegrationPreview({
 }) {
   const title =
     attachment.card.metadata.title ?? integrationProviderLabel(attachment.provider);
-  const subtitle =
-    attachment.card.metadata.subtitle ?? integrationProviderLabel(attachment.provider);
+  const subtitle = distinctSecondaryText(
+    title,
+    attachment.card.metadata.subtitle ??
+      integrationProviderLabel(attachment.provider),
+  );
   const imageUrl = attachment.card.metadata.imageUrl;
 
   return (
@@ -740,7 +740,9 @@ function MessageIntegrationPreview({
         <span className="block truncate text-sm font-semibold text-text">
           {title}
         </span>
-        <span className="mt-1 block truncate text-xs text-muted">{subtitle}</span>
+        {subtitle ? (
+          <span className="mt-1 block truncate text-xs text-muted">{subtitle}</span>
+        ) : null}
       </span>
     </div>
   );
@@ -770,26 +772,6 @@ function messageAttachmentKey(attachment: PostMediaDraft): string {
   return attachment.type === "integration" || attachment.type === "gif"
     ? attachment.resourceKey
     : attachment.url;
-}
-
-function attachmentLabel(attachment: PostMediaDraft): string {
-  if (attachment.type === "integration") {
-    return integrationProviderLabel(attachment.provider);
-  }
-
-  if (attachment.type === "gif") {
-    return "GIF";
-  }
-
-  if (attachment.type === "audio") {
-    return "Audio";
-  }
-
-  if (attachment.type === "video") {
-    return "Video";
-  }
-
-  return "Image";
 }
 
 function integrationProviderLabel(provider: "spotify" | "youtube"): string {

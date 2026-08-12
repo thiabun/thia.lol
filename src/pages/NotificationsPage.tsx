@@ -19,10 +19,9 @@ import { motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { PageMeta } from "../components/PageMeta";
-import { DesktopNotificationsCard } from "../components/notifications/DesktopNotificationsCard";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
-import { RouteHeader, RouteStateNotice } from "../components/ui/RouteState";
+import { RouteStateNotice } from "../components/ui/RouteState";
 import { InlineUserProfileLink } from "../components/social/UserProfileLink";
 import {
   approveFollowRequest,
@@ -206,7 +205,10 @@ export function NotificationsPage() {
   if (status === "anonymous") {
     return (
       <motion.div
-        className="mx-auto max-w-4xl space-y-5"
+        className="mx-auto max-w-4xl space-y-3"
+        data-testid="notifications-page"
+        role="region"
+        aria-label="Notifications"
         variants={pageEntrance}
         initial="hidden"
         animate="show"
@@ -216,16 +218,10 @@ export function NotificationsPage() {
           description="Notifications."
           path="/notifications"
         />
-        <RouteHeader
-          badge="private"
-          badgeTone="cool"
-          title="Notifications"
-          description="Activity from posts, rooms, and people."
-        />
+        <h1 className="sr-only">Notifications</h1>
         <RouteStateNotice
           icon={Bell}
           title="Sign in to see notifications."
-          text="Notifications require sign-in."
           actions={
             <ButtonLink
               to="/login"
@@ -242,7 +238,10 @@ export function NotificationsPage() {
   if (status === "loading") {
     return (
       <motion.div
-        className="mx-auto max-w-4xl space-y-5"
+        className="mx-auto max-w-4xl space-y-3"
+        data-testid="notifications-page"
+        role="region"
+        aria-label="Notifications"
         variants={pageEntrance}
         initial="hidden"
         animate="show"
@@ -252,17 +251,11 @@ export function NotificationsPage() {
           description="Notifications."
           path="/notifications"
         />
-        <RouteHeader
-          badge="private"
-          badgeTone="cool"
-          title="Notifications"
-          description="Activity from posts, rooms, and people."
-        />
+        <h1 className="sr-only">Notifications</h1>
         <RouteStateNotice
           kind="loading"
           icon={LoaderCircle}
           title="Loading notifications"
-          text="Loading updates."
         />
       </motion.div>
     );
@@ -270,7 +263,10 @@ export function NotificationsPage() {
 
   return (
     <motion.div
-      className="mx-auto max-w-4xl space-y-5"
+      className="mx-auto max-w-4xl space-y-3"
+      data-testid="notifications-page"
+      role="region"
+      aria-label="Notifications"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -280,41 +276,45 @@ export function NotificationsPage() {
         description="Notifications."
         path="/notifications"
       />
+      <h1 className="sr-only">Notifications</h1>
 
-      <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-        <RouteHeader
-          badge="private"
-          badgeTone="cool"
-          title="Notifications"
-          description="Updates."
-          meta={
-            <p
-              className="text-sm font-medium text-muted"
-              data-testid="notifications-unread-count"
-            >
-              {unreadCount} unread
-            </p>
-          }
-          actions={
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={unreadCount === 0 || pendingId === "all"}
-              icon={<CheckCheck aria-hidden="true" size={17} />}
-              onClick={() => void handleMarkAllRead()}
-            >
-              {pendingId === "all" ? "Working..." : "Mark all as read"}
-            </Button>
-          }
-        />
-      </motion.div>
+      {notifications.length > 0 && unreadCount > 0 ? (
+        <motion.div
+          className="flex min-h-11 flex-wrap items-center justify-between gap-2"
+          role="toolbar"
+          aria-label="Notification actions"
+          data-testid="notifications-toolbar"
+          variants={cardEntrance}
+          custom={0}
+          initial="hidden"
+          animate="show"
+        >
+          <p
+            className="text-sm font-medium text-muted"
+            data-testid="notifications-unread-count"
+            aria-live="polite"
+          >
+            {unreadCount} unread
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="min-h-11"
+            disabled={pendingId === "all"}
+            icon={<CheckCheck aria-hidden="true" size={17} />}
+            onClick={() => void handleMarkAllRead()}
+          >
+            {pendingId === "all" ? "Working..." : "Mark all as read"}
+          </Button>
+        </motion.div>
+      ) : null}
 
       {state.loading ? (
         <RouteStateNotice
           kind="loading"
           icon={LoaderCircle}
           title="Loading notifications"
-          text="Loading updates."
         />
       ) : null}
 
@@ -323,7 +323,6 @@ export function NotificationsPage() {
           kind="error"
           icon={WifiOff}
           title="Could not load notifications"
-          text="Try refreshing in a moment."
           actions={
             <Button
               type="button"
@@ -372,8 +371,6 @@ export function NotificationsPage() {
         />
       ) : null}
 
-      {!state.loading && !state.error ? <DesktopNotificationsCard compact /> : null}
-
       {!state.loading &&
       !state.error &&
       !requestState.loading &&
@@ -382,7 +379,6 @@ export function NotificationsPage() {
         <RouteStateNotice
           icon={Bell}
           title="No notifications yet"
-          text="New activity will show up here."
         />
       ) : null}
 

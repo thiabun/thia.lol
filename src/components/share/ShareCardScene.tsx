@@ -2,12 +2,12 @@ import {
   Heart,
   MessageCircle,
   Repeat2,
-  Share2,
   type LucideIcon,
 } from "lucide-react";
 import { ProfilePersonalBackdrop } from "../social/ProfilePersonalBackdrop";
 import { ProfilePublicCanvasSnapshot } from "../../pages/ProfilePage";
 import { cn } from "../../lib/classNames";
+import { distinctSecondaryText } from "../../lib/displayText";
 import {
   postCanonicalPath,
   shareCardImageProxyUrl,
@@ -53,7 +53,7 @@ type SharePalette = {
   text: string;
 };
 
-const SHARE_CARD_RENDER_VERSION = "screenshot-v9";
+const SHARE_CARD_RENDER_VERSION = "screenshot-v10";
 const PROFILE_SHARE_CANVAS_SCALE = 0.75;
 const PROFILE_SHARE_CANVAS_WIDTH = 1536;
 
@@ -215,7 +215,7 @@ function PostShareCard({ palette, post }: { palette: SharePalette; post: Post })
                     style={{
                       backgroundColor: hexToRgba(
                         palette.accent,
-                        chip === "Recent" ? 0.14 : 0.1,
+                        0.1,
                       ),
                       borderColor: hexToRgba(palette.accent, 0.36),
                       color: palette.text,
@@ -260,27 +260,16 @@ function PostShareCard({ palette, post }: { palette: SharePalette; post: Post })
             label="Reposts"
             value={post.reblogCount ?? post.reactions.echo}
           />
-          <span
-            className="ml-2 grid h-[54px] w-[54px] place-items-center rounded-full"
-            style={{
-              backgroundColor: hexToRgba(palette.surfaceStrong, 0.76),
-              border: `1px solid ${palette.line}`,
-              color: palette.muted,
-            }}
-          >
-            <Share2 size={25} />
-          </span>
         </div>
         <p className="mt-7 truncate text-[22px]" style={{ color: palette.muted }}>
           {postCanonicalPath(post)}
         </p>
       </div>
-      {hasPreview ? (
+      {previewImage ? (
         <PostPreviewTile
           card={linkCard}
           imageUrl={previewImage}
           palette={palette}
-          post={post}
         />
       ) : null}
       <img
@@ -349,13 +338,18 @@ function PostPreviewTile({
   card,
   imageUrl,
   palette,
-  post,
 }: {
   card?: RichLinkCard | null;
-  imageUrl?: string | null;
+  imageUrl: string;
   palette: SharePalette;
-  post: Post;
 }) {
+  const cardTitle = card
+    ? distinctSecondaryText(
+        providerLabel(card.provider),
+        card.metadata.title ?? card.metadata.subtitle ?? card.sourceUrl,
+      )
+    : undefined;
+
   return (
     <div
       className="relative min-h-0 overflow-hidden rounded-[28px] border"
@@ -364,26 +358,12 @@ function PostPreviewTile({
         borderColor: palette.line,
       }}
     >
-      {imageUrl ? (
-        <img
-          alt=""
-          className="size-full object-cover"
-          data-share-card-post-media="true"
-          src={shareCardImageProxyUrl(imageUrl)}
-        />
-      ) : (
-        <div className="flex size-full flex-col justify-end p-7">
-          <p
-            className="text-[18px] uppercase tracking-[0.24em]"
-            style={{ color: palette.accent }}
-          >
-            thia.lol
-          </p>
-          <p className="mt-4 text-[28px] leading-tight">
-            Post by @{post.author.handle}
-          </p>
-        </div>
-      )}
+      <img
+        alt=""
+        className="size-full object-cover"
+        data-share-card-post-media="true"
+        src={shareCardImageProxyUrl(imageUrl)}
+      />
       {card ? (
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/82 via-black/48 to-transparent p-6 pt-24">
           <p
@@ -392,11 +372,11 @@ function PostPreviewTile({
           >
             {providerLabel(card.provider)}
           </p>
-          <p className="mt-2 line-clamp-2 text-[24px] font-semibold leading-tight">
-            {card.metadata.title ??
-              card.metadata.subtitle ??
-              card.sourceUrl}
-          </p>
+          {cardTitle ? (
+            <p className="mt-2 line-clamp-2 text-[24px] font-semibold leading-tight">
+              {cardTitle}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -480,28 +460,7 @@ function postShareMediaImage(post: Post): string | null {
 }
 
 function postShareContextChips(post: Post): string[] {
-  const chips: string[] = [];
-  const relationship = post.socialContext?.authorRelationship;
-
-  if (relationship === "moot") {
-    chips.push("Moot");
-  } else if (relationship === "following") {
-    chips.push("Following");
-  }
-
-  if (isRecentPostLabel(post.createdAt)) {
-    chips.push("Recent");
-  }
-
-  chips.push(post.room?.name ?? "Profile feed");
-
-  return chips;
-}
-
-function isRecentPostLabel(createdAt: string) {
-  return (
-    createdAt === "now" || /(?:minute|minutes|hour|hours) ago/iu.test(createdAt)
-  );
+  return post.room ? [post.room.name] : [];
 }
 
 function postTimeLabel(createdAt: string) {

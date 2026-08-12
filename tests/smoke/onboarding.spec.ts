@@ -57,11 +57,12 @@ test("registration lands in the guided onboarding flow", async ({ page }) => {
 
   await expect.poll(() => registerPayload?.handle).toBe("onboardtester");
   await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(page.getByTestId("onboarding-page")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Build your first profile" }),
+    page.getByTestId("onboarding-step-profile_basics"),
   ).toBeVisible();
-  await expect(page.getByTestId("onboarding-profile-preview")).toBeVisible();
-  await expect(page.getByTestId("onboarding-step-welcome")).toBeVisible();
+  await expect(page.getByTestId("onboarding-profile-preview")).toHaveCount(0);
+  await expect(page.getByTestId("onboarding-step-welcome")).toHaveCount(0);
 });
 
 test("registration accepts an explicit @ handle without a duplicate prefix", async ({
@@ -112,8 +113,9 @@ test("existing authenticated users are routed into onboarding when unfinished", 
 
   await page.goto("/discover");
   await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(page.getByTestId("onboarding-page")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Build your first profile" }),
+    page.getByTestId("onboarding-step-profile_basics"),
   ).toBeVisible();
 });
 
@@ -129,8 +131,10 @@ test("unfinished users can open their profile and editor from onboarding", async
 
   await page.goto("/onboarding");
   await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
-  await expect(page.getByText("Start by making the canvas real.")).toBeVisible();
-  await page.getByTestId("onboarding-start").click();
+  await expect(
+    page.getByTestId("onboarding-step-profile_basics"),
+  ).toBeVisible();
+  await page.getByTestId("onboarding-open-profile-tour").click();
 
   await expect(page).toHaveURL(/\/@thia\?editCanvas=1&tour=profile-editor$/);
   await page.waitForTimeout(250);
@@ -138,8 +142,9 @@ test("unfinished users can open their profile and editor from onboarding", async
 
   await page.goto("/onboarding");
   await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
-  await page.getByRole("button", { name: "Setup checklist" }).click();
-  await expect(page.getByTestId("onboarding-step-profile_basics")).toBeVisible();
+  await expect(
+    page.getByTestId("onboarding-step-profile_basics"),
+  ).toBeVisible();
 
   await page.goto("/@thia");
   await expect(page).toHaveURL(/\/@thia$/);
@@ -199,18 +204,29 @@ test("onboarding handles OAuth returns, manual links, skip, connect, and finish"
     });
   });
 
-  await page.goto("/onboarding?integrationProvider=youtube&integrationStatus=connected");
+  await page.goto(
+    "/onboarding?integrationProvider=youtube&integrationStatus=connected",
+  );
   await expect(page.getByText("YouTube connected.")).toBeVisible();
   await expect(page).toHaveURL(/\/onboarding$/);
   await expect(page.getByTestId("onboarding-step-integrations")).toBeVisible();
   await expect
-    .poll(() => patches.some((patch) => patch.action === "complete_step" && patch.step === "youtube"))
+    .poll(() =>
+      patches.some(
+        (patch) => patch.action === "complete_step" && patch.step === "youtube",
+      ),
+    )
     .toBe(true);
 
   await page.getByTestId("onboarding-nav-profile_basics").click();
   await page.getByTestId("onboarding-profile-basics-skip").click();
   await expect
-    .poll(() => patches.some((patch) => patch.action === "skip_step" && patch.step === "profile_basics"))
+    .poll(() =>
+      patches.some(
+        (patch) =>
+          patch.action === "skip_step" && patch.step === "profile_basics",
+      ),
+    )
     .toBe(true);
 
   await page
@@ -234,11 +250,16 @@ test("onboarding handles OAuth returns, manual links, skip, connect, and finish"
 
   await page.getByTestId("onboarding-nav-integrations").click();
   await page.getByTestId("onboarding-connect-spotify").click();
-  await expect.poll(() => spotifyStartPayload?.redirectPath).toBe("/onboarding");
+  await expect
+    .poll(() => spotifyStartPayload?.redirectPath)
+    .toBe("/onboarding");
 
   await page.getByTestId("onboarding-nav-profile_canvas").click();
   await page.getByTestId("onboarding-skip-profile_canvas").click();
   await expect(page.getByTestId("desktop-notifications-card")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Desktop notifications" }),
+  ).toHaveCount(1);
   await expect(page.getByTestId("desktop-notifications-state")).toContainText(
     /setup needed|unsupported|blocked/,
   );
@@ -272,7 +293,10 @@ test("onboarding stays usable when integration storage is unavailable", async ({
     await route.fulfill({
       status: 503,
       contentType: "application/json",
-      body: JSON.stringify({ ok: false, error: "Integration storage is not ready." }),
+      body: JSON.stringify({
+        ok: false,
+        error: "Integration storage is not ready.",
+      }),
     });
   });
   await mockIntegrationDiagnostics(page, {
@@ -283,16 +307,15 @@ test("onboarding stays usable when integration storage is unavailable", async ({
 
   await page.goto("/onboarding");
   await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
-  await page.getByRole("button", { name: "Setup checklist" }).click();
   await page.getByTestId("onboarding-nav-integrations").click();
 
   await expect(page.getByTestId("onboarding-step-integrations")).toBeVisible();
   await expect(page.getByTestId("onboarding-integrations-error")).toContainText(
     "Integration storage is not ready",
   );
-  await expect(page.getByTestId("onboarding-provider-message-spotify")).toContainText(
-    "Integration tables are not ready",
-  );
+  await expect(
+    page.getByTestId("onboarding-provider-message-spotify"),
+  ).toContainText("Integration tables are not ready");
   await expect(page.getByTestId("onboarding-connect-spotify")).toBeDisabled();
 });
 
@@ -320,7 +343,10 @@ async function mockNotifications(page: Page) {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: { notifications: [], unreadCount: 0 } }),
+      body: JSON.stringify({
+        ok: true,
+        data: { notifications: [], unreadCount: 0 },
+      }),
     });
   });
 
@@ -361,7 +387,10 @@ async function mockOnboarding(
     }
 
     if (route.request().method() === "PATCH") {
-      const patch = (await route.request().postDataJSON()) as Record<string, unknown>;
+      const patch = (await route.request().postDataJSON()) as Record<
+        string,
+        unknown
+      >;
       patches.push(patch);
       applyOnboardingPatch(state, patch);
       await route.fulfill({
@@ -391,16 +420,20 @@ async function mockIntegrations(
       body: JSON.stringify({
         ok: true,
         data: {
-          providers: ["spotify", "youtube", "twitch", "github", "apple_music"].map(
-            (provider) => ({
-              provider,
-              configured: provider !== "apple_music",
-              oauthEnabled: provider !== "apple_music",
-              linkSupported: true,
-              metadataEnabled: true,
-              missingConfigKeys: [],
-            }),
-          ),
+          providers: [
+            "spotify",
+            "youtube",
+            "twitch",
+            "github",
+            "apple_music",
+          ].map((provider) => ({
+            provider,
+            configured: provider !== "apple_music",
+            oauthEnabled: provider !== "apple_music",
+            linkSupported: true,
+            metadataEnabled: true,
+            missingConfigKeys: [],
+          })),
           accounts,
         },
       }),
@@ -429,20 +462,24 @@ async function mockIntegrationDiagnostics(
           encryptionAvailable: overrides.encryptionAvailable ?? true,
           cryptoMethod: "sodium",
           oauthStateExpiresIn: 600,
-          providers: ["spotify", "youtube", "twitch", "github", "apple_music"].map(
-            (provider) => ({
-              provider,
-              configured: provider !== "apple_music",
-              oauthEnabled: provider !== "apple_music",
-              linkSupported: true,
-              metadataEnabled: true,
-              redirectUri:
-                provider === "apple_music"
-                  ? null
-                  : `https://thia.lol/api/integrations/${provider}/callback`,
-              missingConfigKeys: [],
-            }),
-          ),
+          providers: [
+            "spotify",
+            "youtube",
+            "twitch",
+            "github",
+            "apple_music",
+          ].map((provider) => ({
+            provider,
+            configured: provider !== "apple_music",
+            oauthEnabled: provider !== "apple_music",
+            linkSupported: true,
+            metadataEnabled: true,
+            redirectUri:
+              provider === "apple_music"
+                ? null
+                : `https://thia.lol/api/integrations/${provider}/callback`,
+            missingConfigKeys: [],
+          })),
         },
       }),
     });
@@ -491,12 +528,16 @@ function applyOnboardingPatch(
 ) {
   if (patch.action === "complete_step" && typeof patch.step === "string") {
     state.completedSteps = unique([...state.completedSteps, patch.step]);
-    state.skippedSteps = state.skippedSteps.filter((step) => step !== patch.step);
+    state.skippedSteps = state.skippedSteps.filter(
+      (step) => step !== patch.step,
+    );
   }
 
   if (patch.action === "skip_step" && typeof patch.step === "string") {
     state.skippedSteps = unique([...state.skippedSteps, patch.step]);
-    state.completedSteps = state.completedSteps.filter((step) => step !== patch.step);
+    state.completedSteps = state.completedSteps.filter(
+      (step) => step !== patch.step,
+    );
   }
 
   if (

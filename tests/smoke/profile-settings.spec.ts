@@ -13,7 +13,9 @@ test.beforeEach(async ({ context }) => {
   });
 });
 
-test("profile canvas editor replaces the retired customization modal", async ({ page }) => {
+test("profile canvas editor replaces the retired customization modal", async ({
+  page,
+}) => {
   await mockOwnProfile(page, () => [
     {
       platform: "github",
@@ -25,12 +27,21 @@ test("profile canvas editor replaces the retired customization modal", async ({ 
 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
-  await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Edit personal space" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Customize profile" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Edit personal space" }),
+  ).toHaveCount(0);
   await expect(page.getByTestId("profile-edit-button")).toBeVisible();
-  const manageConnections = page.getByTestId("profile-manage-connections-button");
+  const manageConnections = page.getByTestId(
+    "profile-manage-connections-button",
+  );
   await expect(manageConnections).toBeVisible();
-  await expect(manageConnections).toHaveAttribute("href", "/settings/connections");
+  await expect(manageConnections).toHaveAttribute(
+    "href",
+    "/settings/connections",
+  );
   await page.getByTestId("profile-edit-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
   await expect(page.getByTestId("profile-editor")).toHaveCount(0);
@@ -38,13 +49,41 @@ test("profile canvas editor replaces the retired customization modal", async ({ 
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
 });
 
-test("profile appearance editor saves profile-scoped color themes", async ({ page }) => {
+test("profile share preview keeps identity without repeating bio or path", async ({
+  page,
+}) => {
+  await mockOwnProfile(page, () => []);
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-info-overflow-button").click();
+  await page.getByRole("menuitem", { name: "Share profile" }).click();
+
+  const modal = page.getByTestId("profile-share-modal");
+  await expect(modal).toBeVisible();
+  await expect(modal.getByText("Thia", { exact: true })).toBeVisible();
+  await expect(modal.getByText("@thia", { exact: true })).toBeVisible();
+  await expect(
+    modal.getByText("Founder profile for thia.lol.", { exact: true }),
+  ).toHaveCount(0);
+  await expect(modal.getByRole("link", { name: "/@thia" })).toHaveCount(0);
+  await expect(modal.getByTestId("profile-share-copy-link")).toBeVisible();
+  await expect(modal.getByTestId("profile-share-save-image")).toBeVisible();
+});
+
+test("profile appearance editor saves profile-scoped color themes", async ({
+  page,
+}) => {
   const saves: Record<string, unknown>[] = [];
   await page.addInitScript(() => {
     window.localStorage.setItem("thia.lol.theme", "profile");
     window.localStorage.setItem("thia.lol.theme.standard", "light");
   });
-  await mockOwnProfile(page, () => [], (payload) => saves.push(payload));
+  await mockOwnProfile(
+    page,
+    () => [],
+    (payload) => saves.push(payload),
+  );
 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
@@ -62,7 +101,8 @@ test("profile appearance editor saves profile-scoped color themes", async ({ pag
   await expect
     .poll(() =>
       saves.some((payload) => {
-        const config = payload.profileThemeConfig as { mode?: string; preset?: string } | undefined;
+        const config = payload.profileThemeConfig as
+          { mode?: string; preset?: string } | undefined;
 
         return config?.mode === "preset" && config.preset === "roseveil";
       }),
@@ -82,8 +122,7 @@ test("profile appearance editor saves profile-scoped color themes", async ({ pag
     .poll(() =>
       saves.some((payload) => {
         const config = payload.profileThemeConfig as
-          | { mode?: string; colors?: { accent?: string } }
-          | undefined;
+          { mode?: string; colors?: { accent?: string } } | undefined;
 
         return config?.mode === "custom" && config.colors?.accent === "#3366FF";
       }),
@@ -91,13 +130,20 @@ test("profile appearance editor saves profile-scoped color themes", async ({ pag
     .toBe(true);
   await expect
     .poll(() =>
-      saves.some((payload) => payload.profileTheme === "custom" && payload.profileAccent === "custom"),
+      saves.some(
+        (payload) =>
+          payload.profileTheme === "custom" &&
+          payload.profileAccent === "custom",
+      ),
     )
     .toBe(true);
 
   await page.getByTestId("profile-studio-tool-select").click();
   await expect(page.getByTestId("profile-appearance-popover")).toHaveCount(0);
-  await page.getByRole("link", { name: "Discover", exact: true }).first().click();
+  await page
+    .getByRole("link", { name: "Discover", exact: true })
+    .first()
+    .click();
   await expect(page.locator('[data-site-profile-theme="true"]')).toHaveCount(2);
   await expect
     .poll(() =>
@@ -157,7 +203,9 @@ test("profile routes disable site theme controls and use profile contrast for br
   await page.getByRole("button", { name: "Account menu for @thia" }).click();
   await page.getByRole("menuitem", { name: "Profile", exact: true }).click();
   await expect(page).toHaveURL(/\/@thia$/);
-  await expect(page.locator("html")).not.toHaveAttribute("data-site-profile-theme");
+  await expect(page.locator("html")).not.toHaveAttribute(
+    "data-site-profile-theme",
+  );
   await expect
     .poll(() =>
       page.evaluate(() => ({
@@ -187,7 +235,9 @@ test("profile routes disable site theme controls and use profile contrast for br
     await expect
       .poll(() =>
         page.evaluate(() =>
-          document.documentElement.style.getPropertyValue("--app-canvas").trim(),
+          document.documentElement.style
+            .getPropertyValue("--app-canvas")
+            .trim(),
         ),
       )
       .toBe("#092119");
@@ -216,10 +266,9 @@ test("profile routes disable site theme controls and use profile contrast for br
     );
   }
 
-  await expect(page.locator("[data-profile-info-badge='founder']").first()).toHaveCSS(
-    "color",
-    "rgb(140, 240, 181)",
-  );
+  await expect(
+    page.locator("[data-profile-info-badge='founder']").first(),
+  ).toHaveCSS("color", "rgb(140, 240, 181)");
   await expect(page.getByTestId("brand-logo").locator("img")).toHaveAttribute(
     "src",
     /\/brand\/thia-mark-dark-96\.png$/,
@@ -255,9 +304,15 @@ test("profile routes disable site theme controls and use profile contrast for br
     });
 });
 
-test("profile appearance save flushes pending theme edits", async ({ page }) => {
+test("profile appearance save flushes pending theme edits", async ({
+  page,
+}) => {
   const saves: Record<string, unknown>[] = [];
-  await mockOwnProfile(page, () => [], (payload) => saves.push(payload));
+  await mockOwnProfile(
+    page,
+    () => [],
+    (payload) => saves.push(payload),
+  );
 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
@@ -274,7 +329,8 @@ test("profile appearance save flushes pending theme edits", async ({ page }) => 
   await expect
     .poll(() =>
       saves.some((payload) => {
-        const config = payload.profileThemeConfig as { mode?: string; preset?: string } | undefined;
+        const config = payload.profileThemeConfig as
+          { mode?: string; preset?: string } | undefined;
 
         return config?.mode === "preset" && config.preset === "roseveil";
       }),
@@ -290,27 +346,37 @@ test("profile appearance save flushes pending theme edits", async ({ page }) => 
     .toBe("#F48CA2");
 });
 
-test("mobile profile stays stable with compact profile editor", async ({ page }) => {
+test("mobile profile stays stable with compact profile editor", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockOwnProfile(page, () => []);
 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Customize profile" }),
+  ).toHaveCount(0);
   await expect(page.getByTestId("profile-edit-button")).toBeVisible();
-  await expect(page.getByTestId("profile-manage-connections-button")).toBeVisible();
+  await expect(
+    page.getByTestId("profile-manage-connections-button"),
+  ).toBeVisible();
   await page.getByTestId("profile-edit-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
   await expect(page.getByTestId("profile-editor")).toHaveCount(0);
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
   const hasHorizontalOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    () =>
+      document.documentElement.scrollWidth >
+      document.documentElement.clientWidth,
   );
   expect(hasHorizontalOverflow).toBe(false);
 });
 
-test("profile banners stay behind identity in public header", async ({ page }) => {
+test("profile banners stay behind identity in public header", async ({
+  page,
+}) => {
   await mockOwnProfile(page, () => [], undefined, {
     bannerUrl: "/uploads/media/2026/06/profile-test.webp",
     profileBackground: "/uploads/media/2026/06/profile-test.webp",
@@ -328,16 +394,14 @@ test("profile banners stay behind identity in public header", async ({ page }) =
     "medium",
   );
   await expect(page.getByTestId("profile-header-banner")).toBeVisible();
-  await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
-    "data-profile-grid-size",
-    "8x3",
-  );
-  await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
-    "data-profile-grid-row-span",
-    "3",
-  );
+  await expect(
+    page.getByTestId("profile-grid-module-profile_info"),
+  ).toHaveAttribute("data-profile-grid-size", "8x3");
+  await expect(
+    page.getByTestId("profile-grid-module-profile_info"),
+  ).toHaveAttribute("data-profile-grid-row-span", "3");
   await expect(page.getByRole("heading", { name: "Thia" })).toBeVisible();
-  await expect(page.getByText("@thia")).toBeVisible();
+  await expect(page.getByText("@thia", { exact: true })).toBeVisible();
   await expectElementAtPointBelongsTo(
     page,
     page.getByRole("heading", { name: "Thia" }),
@@ -369,19 +433,17 @@ test("profile followers and following use compact panels", async ({ page }) => {
   await page.getByRole("button", { name: /Followers/ }).click();
   let dialog = page.getByRole("dialog", { name: "Followers" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("link", { name: "Alex's profile" })).toHaveAttribute(
-    "href",
-    "/@alex",
-  );
+  await expect(
+    dialog.getByRole("link", { name: "Alex's profile" }),
+  ).toHaveAttribute("href", "/@alex");
   await page.getByRole("button", { name: "Close panel" }).click();
 
   await page.getByRole("button", { name: /Following/ }).click();
   dialog = page.getByRole("dialog", { name: "Following" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("link", { name: "Mira's profile" })).toHaveAttribute(
-    "href",
-    "/@mira",
-  );
+  await expect(
+    dialog.getByRole("link", { name: "Mira's profile" }),
+  ).toHaveAttribute("href", "/@mira");
   await page.getByRole("button", { name: "Close panel" }).click();
 
   await expect(page.getByRole("button", { name: /Badges/ })).toHaveCount(0);
@@ -407,17 +469,16 @@ test("profile layout renders identity, essential social stats, activity module, 
     "data-profile-background-source",
     "fallback",
   );
-  await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
-    "data-profile-grid-size",
-    "6x4",
-  );
+  await expect(
+    page.getByTestId("profile-grid-module-profile_info"),
+  ).toHaveAttribute("data-profile-grid-size", "6x4");
   await expect(page.getByTestId("profile-module-grid")).toHaveAttribute(
     "data-profile-mobile-stack",
     "true",
   );
   await expect(page.getByTestId("profile-header")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Thia" })).toBeVisible();
-  await expect(page.getByText("@thia")).toBeVisible();
+  await expect(page.getByText("@thia", { exact: true })).toBeVisible();
   await expect(page.getByText("Founder profile for thia.lol.")).toBeVisible();
   await expect(page.getByRole("link", { name: /GitHub/ })).toBeVisible();
   await expect(page.getByText("Founder", { exact: true })).toBeVisible();
@@ -433,9 +494,11 @@ test("profile layout renders identity, essential social stats, activity module, 
   await expect(socialContext.getByText("Badges")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /1 Followers/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /1 Following/ })).toBeVisible();
-  const socialButtonHeights = await socialContext.locator("button").evaluateAll((buttons) =>
-    buttons.map((button) => (button as HTMLElement).offsetHeight),
-  );
+  const socialButtonHeights = await socialContext
+    .locator("button")
+    .evaluateAll((buttons) =>
+      buttons.map((button) => (button as HTMLElement).offsetHeight),
+    );
   expect(Math.min(...socialButtonHeights)).toBeGreaterThanOrEqual(44);
   await expect(page.getByText("1 Moots")).toHaveCount(0);
 
@@ -444,16 +507,21 @@ test("profile layout renders identity, essential social stats, activity module, 
   await expect(tabs.getByRole("tab", { name: /Feed/ })).toBeVisible();
   await expect(tabs.getByRole("tab", { name: /Replies/ })).toBeVisible();
   await expect(tabs.getByRole("tab", { name: /Rooms/ })).toBeVisible();
-  await expect(page.getByText("No posts.")).toBeVisible();
+  await expect(page.getByText("No posts yet")).toBeVisible();
+  await expect(page.getByText("No posts.")).toHaveCount(0);
 
   await tabs.getByRole("tab", { name: /Replies/ }).click();
-  await expect(page.getByText("No replies.")).toBeVisible();
+  await expect(page.getByText("No replies yet")).toBeVisible();
+  await expect(page.getByText("No replies.")).toHaveCount(0);
 
   await tabs.getByRole("tab", { name: /Rooms/ }).click();
-  await expect(page.getByText("No rooms.")).toBeVisible();
+  await expect(page.getByText("No rooms yet")).toBeVisible();
+  await expect(page.getByText("No rooms.")).toHaveCount(0);
 
   const hasHorizontalOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    () =>
+      document.documentElement.scrollWidth >
+      document.documentElement.clientWidth,
   );
   expect(hasHorizontalOverflow).toBe(false);
 });
@@ -463,7 +531,9 @@ async function mockOwnProfile(
   links: () => unknown[],
   onSave?: (payload: Record<string, unknown>) => void,
   profileOverrides: Partial<ReturnType<typeof profileBody>> = {},
-  authProfileOverrides: Partial<ReturnType<typeof profileBody>> = profileOverrides,
+  authProfileOverrides: Partial<
+    ReturnType<typeof profileBody>
+  > = profileOverrides,
 ) {
   await page.route("**/api/**", async (route) => {
     await route.fulfill({
@@ -522,7 +592,10 @@ async function mockOwnProfile(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: { notifications: [], unreadCount: 0 } }),
+      body: JSON.stringify({
+        ok: true,
+        data: { notifications: [], unreadCount: 0 },
+      }),
     });
   });
 
@@ -535,7 +608,10 @@ async function mockOwnProfile(
   });
 
   await page.route("**/api/me/profile", async (route) => {
-    const payload = (await route.request().postDataJSON()) as Record<string, unknown>;
+    const payload = (await route.request().postDataJSON()) as Record<
+      string,
+      unknown
+    >;
     onSave?.(payload);
     const savedOverrides: Partial<ProfileBody> = { ...profileOverrides };
 
@@ -554,7 +630,10 @@ async function mockOwnProfile(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: profileBody(links(), savedOverrides) }),
+      body: JSON.stringify({
+        ok: true,
+        data: profileBody(links(), savedOverrides),
+      }),
     });
   });
 
@@ -562,7 +641,10 @@ async function mockOwnProfile(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: profileBody(links(), profileOverrides) }),
+      body: JSON.stringify({
+        ok: true,
+        data: profileBody(links(), profileOverrides),
+      }),
     });
   });
 
@@ -584,7 +666,10 @@ async function mockOwnProfile(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [profileInfoModule(), activityModule()] }),
+      body: JSON.stringify({
+        ok: true,
+        data: [profileInfoModule(), activityModule()],
+      }),
     });
   });
 
@@ -592,7 +677,10 @@ async function mockOwnProfile(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [profileInfoModule(), activityModule()] }),
+      body: JSON.stringify({
+        ok: true,
+        data: [profileInfoModule(), activityModule()],
+      }),
     });
   });
 
@@ -673,7 +761,10 @@ async function acknowledgeCookieNotice(page: Page) {
   });
 }
 
-function profileBody(links: unknown[], overrides: Partial<ProfileBody> = {}): ProfileBody {
+function profileBody(
+  links: unknown[],
+  overrides: Partial<ProfileBody> = {},
+): ProfileBody {
   const body: ProfileBody = {
     user: {
       id: 1,
@@ -812,7 +903,9 @@ async function expectElementAtPointBelongsTo(
   const owner = await page.evaluate(
     ({ x, y }) => {
       const element = document.elementFromPoint(x, y);
-      return element?.closest("[data-testid]")?.getAttribute("data-testid") ?? null;
+      return (
+        element?.closest("[data-testid]")?.getAttribute("data-testid") ?? null
+      );
     },
     {
       x: (box?.x ?? 0) + Math.min((box?.width ?? 0) - 4, 96),

@@ -37,7 +37,6 @@ import { Button, ButtonLink } from "../components/ui/Button";
 import { ModalSheet } from "../components/ui/ModalSheet";
 import {
   CompactStateNotice,
-  RouteHeader,
   RouteStateNotice,
 } from "../components/ui/RouteState";
 import { UserIdentityLink } from "../components/social/UserProfileLink";
@@ -51,7 +50,7 @@ import {
 } from "../lib/api";
 import { cn } from "../lib/classNames";
 import { parseApiTimestamp } from "../lib/dates";
-import { cardEntrance, pageEntrance } from "../lib/motionPresets";
+import { pageEntrance } from "../lib/motionPresets";
 import type { PostMediaDraft } from "../lib/postMedia";
 import type {
   ChatConversation,
@@ -539,22 +538,18 @@ export function ChatPage() {
     return (
       <motion.div
         className="mx-auto max-w-4xl space-y-4"
+        data-testid="chat-page"
+        role="region"
+        aria-label="Chat"
         variants={pageEntrance}
         initial="hidden"
         animate="show"
       >
         <PageMeta title="Chat" description="Messages on thia.lol." path="/chat" />
-        <RouteHeader
-          badge="private"
-          badgeTone="cool"
-          surface="bare"
-          title="Chat"
-          description="Private messages with moots."
-        />
+        <h1 className="sr-only">Chat</h1>
         <RouteStateNotice
           icon={MessageCircle}
           title="Sign in to see messages."
-          text="Chat requires sign-in."
           actions={<ButtonLink to="/login">Sign in</ButtonLink>}
         />
       </motion.div>
@@ -565,23 +560,19 @@ export function ChatPage() {
     return (
       <motion.div
         className="mx-auto max-w-5xl space-y-4"
+        data-testid="chat-page"
+        role="region"
+        aria-label="Chat"
         variants={pageEntrance}
         initial="hidden"
         animate="show"
       >
         <PageMeta title="Chat" description="Messages on thia.lol." path="/chat" />
-        <RouteHeader
-          badge="private"
-          badgeTone="cool"
-          surface="bare"
-          title="Chat"
-          description="Private messages with moots."
-        />
+        <h1 className="sr-only">Chat</h1>
         <RouteStateNotice
           kind="loading"
           icon={LoaderCircle}
           title="Loading chat"
-          text="Loading messages."
         />
       </motion.div>
     );
@@ -590,51 +581,18 @@ export function ChatPage() {
   return (
     <motion.div
       className={cn(
-        "mx-auto min-w-0 max-w-7xl space-y-4 lg:pb-0",
+        "mx-auto min-w-0 max-w-7xl space-y-3 lg:pb-0",
         mobileConversationOpen ? "pb-0" : "pb-20",
       )}
+      data-testid="chat-page"
+      role="region"
+      aria-label="Chat"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
     >
       <PageMeta title="Chat" description="Messages on thia.lol." path="/chat" />
-      <motion.div
-        className={mobileConversationOpen ? "hidden lg:block" : undefined}
-        variants={cardEntrance}
-        custom={0}
-        initial="hidden"
-        animate="show"
-      >
-        <RouteHeader
-          badge="private"
-          badgeTone="cool"
-          surface="bare"
-          title="Chat"
-          description="Private messages with moots."
-          actions={
-            <>
-              <Button
-                type="button"
-                size="sm"
-                icon={<UserPlus aria-hidden="true" size={16} />}
-                data-testid="chat-new-chat-button"
-                onClick={handleOpenPicker}
-              >
-                New chat
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="icon"
-                aria-label="Refresh conversations"
-                title="Refresh conversations"
-                icon={<RefreshCw aria-hidden="true" size={16} />}
-                onClick={() => void loadConversations()}
-              />
-            </>
-          }
-        />
-      </motion.div>
+      <h1 className="sr-only">Chat</h1>
 
       {startError ? (
         <RouteStateNotice
@@ -650,7 +608,6 @@ export function ChatPage() {
           kind="loading"
           icon={LoaderCircle}
           title="Loading conversations"
-          text="Loading chats."
         />
       ) : null}
 
@@ -659,7 +616,7 @@ export function ChatPage() {
           kind="error"
           icon={WifiOff}
           title="Could not load conversations"
-          text={conversationsError ?? "Try refreshing in a moment."}
+          {...(conversationsError ? { text: conversationsError } : {})}
           actions={
             <Button
               type="button"
@@ -677,12 +634,12 @@ export function ChatPage() {
         <RouteStateNotice
           icon={Inbox}
           title="No chats yet"
-          text="Start with a moot."
           actions={
             <Button
               type="button"
               size="sm"
               icon={<UserPlus aria-hidden="true" size={16} />}
+              data-testid="chat-new-chat-button"
               onClick={handleOpenPicker}
             >
               New chat
@@ -709,19 +666,52 @@ export function ChatPage() {
             )}
           >
             <div className="flex min-h-12 items-center justify-between gap-3 border-b border-line px-3 py-2.5">
-              <div className="min-w-0">
-                <h2 className="text-sm font-semibold text-text">Conversations</h2>
-                <p className="mt-0.5 text-xs text-muted">
-                  {conversations.length === 1
-                    ? "1 chat"
-                    : `${conversations.length} chats`}
-                </p>
+              <h2 className="min-w-0 truncate text-sm font-semibold text-text">
+                Conversations
+              </h2>
+              <div
+                className="flex shrink-0 items-center gap-1.5"
+                role="toolbar"
+                aria-label="Conversation actions"
+                data-testid="chat-conversation-actions"
+              >
+                <Button
+                  type="button"
+                  size="icon"
+                  className="size-11"
+                  aria-label="New chat"
+                  title="New chat"
+                  icon={<UserPlus aria-hidden="true" size={17} />}
+                  data-testid="chat-new-chat-button"
+                  onClick={handleOpenPicker}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  className="size-11"
+                  disabled={conversationsLoading}
+                  aria-label={
+                    conversationsLoading
+                      ? "Refreshing conversations"
+                      : "Refresh conversations"
+                  }
+                  title="Refresh conversations"
+                  icon={
+                    <RefreshCw
+                      aria-hidden="true"
+                      size={17}
+                      className={
+                        conversationsLoading
+                          ? "animate-spin motion-reduce:animate-none"
+                          : undefined
+                      }
+                    />
+                  }
+                  data-testid="chat-refresh-conversations-button"
+                  onClick={() => void loadConversations()}
+                />
               </div>
-              {conversationsLoading ? (
-                <span className="shrink-0 text-xs font-medium text-muted">
-                  Refreshing
-                </span>
-              ) : null}
             </div>
             <div
               className="grid min-w-0 divide-y divide-line overflow-visible p-0 lg:block lg:max-h-[calc(100%-3rem)] lg:overflow-y-auto"
@@ -792,7 +782,6 @@ export function ChatPage() {
                       icon={LoaderCircle}
                       kind="loading"
                       title="Loading messages"
-                      text="Loading messages."
                     />
                   ) : null}
                   {messagesError ? (
@@ -808,7 +797,6 @@ export function ChatPage() {
                       centered
                       icon={Inbox}
                       title="No messages yet"
-                      text="Send the first message."
                     />
                   ) : null}
                   {visibleMessages.map((message) => (
@@ -906,11 +894,6 @@ export function ChatPage() {
                         : "Conversation not available"
                       : "Choose a conversation"
                   }
-                  text={
-                    requestedConversationMissing
-                      ? "This direct-message conversation could not be found."
-                      : "Select a chat to read or reply."
-                  }
                 />
               </div>
             )}
@@ -1001,7 +984,6 @@ function ChatMootPicker({
               icon={LoaderCircle}
               kind="loading"
               title="Loading moots"
-              text="Loading."
             />
           ) : null}
           {error ? (
@@ -1026,7 +1008,7 @@ function ChatMootPicker({
           {!loading && !error && moots.length === 0 ? (
             <CompactStateNotice
               centered
-              className="min-h-72"
+              className="m-4"
               icon={MessageCircle}
               testId="chat-moot-empty"
               title="No moots yet"
@@ -1036,7 +1018,7 @@ function ChatMootPicker({
           {!loading && !error && moots.length > 0 && filteredMoots.length === 0 ? (
             <CompactStateNotice
               centered
-              className="min-h-72"
+              className="m-4"
               icon={Search}
               title="No matching moots"
               text="Try a shorter search."
@@ -1095,10 +1077,10 @@ function ConversationButton({
   onClick,
   selected,
 }: ConversationButtonProps) {
-  const lastMessage =
+  const actualLastMessage =
     conversation.lastMessage?.previewText?.trim() ||
-    conversation.lastMessage?.body ||
-    "No messages yet";
+    conversation.lastMessage?.body;
+  const lastMessage = actualLastMessage || (!selected ? "No messages yet" : undefined);
   const participant = conversation.otherParticipant;
   const profilePath = `/@${participant.handle}`;
 
@@ -1165,17 +1147,19 @@ function ConversationButton({
 
       <div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center justify-between gap-3 text-muted transition duration-fluid ease-fluid group-hover:text-text">
         <span className="min-w-0">
-          <span
-            className={cn(
-              "block truncate text-sm",
-              conversation.unreadCount > 0
-                ? "font-semibold text-text"
-                : "font-medium",
-            )}
-            data-testid={`chat-conversation-preview-${conversation.id}`}
-          >
-            {lastMessage}
-          </span>
+          {lastMessage ? (
+            <span
+              className={cn(
+                "block truncate text-sm",
+                conversation.unreadCount > 0
+                  ? "font-semibold text-text"
+                  : "font-medium",
+              )}
+              data-testid={`chat-conversation-preview-${conversation.id}`}
+            >
+              {lastMessage}
+            </span>
+          ) : null}
           <span
             className="mt-0.5 block text-xs text-muted"
             data-testid={`chat-conversation-timestamp-${conversation.id}`}
@@ -1309,7 +1293,6 @@ function MessageMeta({
             targetId={message.id}
             reportedUserId={message.sender.id}
             title="Report message"
-            explainer="This reports this chat message to moderators."
             triggerMode="icon"
             triggerLabel="Report message"
             triggerSize="compact"

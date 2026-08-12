@@ -309,6 +309,26 @@ async function mockAdminBadgePanel(page: Page) {
     });
   });
 
+  await page.route("**/api/me/onboarding", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          steps: [],
+          completedSteps: [],
+          skippedSteps: [],
+          providerLinks: {},
+          finishedAt: "2026-06-10 10:00:00",
+          dismissedAt: null,
+          createdAt: "2026-06-10 09:00:00",
+          updatedAt: "2026-06-10 10:00:00",
+        },
+      }),
+    });
+  });
+
   await page.route("**/api/rooms", async (route) => {
     await route.fulfill({
       status: 200,
@@ -391,6 +411,25 @@ async function mockAdminBadgePanel(page: Page) {
               },
             },
           ],
+        },
+      }),
+    });
+  });
+
+  await page.route("**/api/admin/growth", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          windowDays: 30,
+          totalSignups: 0,
+          attributedSignups: 0,
+          bySource: [],
+          byCampaign: [],
+          byShareKind: [],
+          topSharedEntities: [],
         },
       }),
     });

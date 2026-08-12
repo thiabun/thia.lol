@@ -1,10 +1,8 @@
-import { ArrowRight, Clock3, MessageCircle, Radio, UsersRound } from "lucide-react";
+import { ArrowRight, MessageCircle, Radio, UsersRound } from "lucide-react";
 import { motion } from "motion/react";
 import { Link } from "react-router";
 import { Panel } from "../ui/Panel";
-import { InlineUserProfileLink } from "./UserProfileLink";
 import type { Room } from "../../lib/types";
-import { formatRelativeTime } from "../../lib/dates";
 import { formatCountWithUnit } from "../../lib/pluralize";
 import {
   cardEntrance,
@@ -12,6 +10,7 @@ import {
 } from "../../lib/motionPresets";
 import { roomThemeSwatchCssProperties } from "../../lib/roomThemes";
 import { cn } from "../../lib/classNames";
+import { distinctContextText } from "../../lib/displayText";
 
 export type RoomCardVariant = "list" | "attachment";
 
@@ -23,6 +22,8 @@ export type RoomCardProps = {
 
 export function RoomCard({ index = 0, room, variant = "list" }: RoomCardProps) {
   const isAttachment = variant === "attachment";
+  const showSlug = Boolean(distinctContextText(room.slug, room.name));
+  const summary = distinctContextText(room.summary, room.name, room.slug);
 
   return (
     <motion.article
@@ -65,35 +66,28 @@ export function RoomCard({ index = 0, room, variant = "list" }: RoomCardProps) {
               aria-label={`Open ${room.name}`}
               title={`Open ${room.name}`}
             >
-              <div className="flex min-w-0 items-center gap-2">
-                <h2 className="truncate text-sm font-semibold text-text">
-                  {room.name}
-                </h2>
-                {room.joinedByMe ? (
-                  <span className="shrink-0 rounded-control bg-leaf/15 px-1.5 py-0.5 text-[0.66rem] font-semibold text-leaf-ink">
-                    Joined
-                  </span>
-                ) : room.visibility !== "public" ? (
-                  <span className="shrink-0 rounded-control bg-accent/15 px-1.5 py-0.5 text-[0.66rem] font-semibold text-text">
-                    {roomVisibilityLabel(room.visibility)}
-                  </span>
-                ) : room.live ? (
-                  <span className="shrink-0 rounded-control bg-leaf/15 px-1.5 py-0.5 text-[0.66rem] font-semibold text-leaf-ink">
-                    Active
-                  </span>
-                ) : null}
-              </div>
-              <span className="mt-0.5 block truncate text-xs text-muted">
-                /{room.slug}
-              </span>
-              <span
-                className={cn(
-                  "mt-1 block text-sm leading-5 text-muted",
-                  isAttachment ? "line-clamp-2" : "line-clamp-1",
-                )}
-              >
-                {room.summary}
-              </span>
+              <h2 className="truncate text-sm font-semibold text-text">
+                {room.name}
+              </h2>
+              {showSlug || room.visibility !== "public" ? (
+                <span className="mt-0.5 block truncate text-xs text-muted">
+                  {showSlug ? `/${room.slug}` : ""}
+                  {showSlug && room.visibility !== "public" ? " · " : ""}
+                  {room.visibility !== "public"
+                    ? roomVisibilityLabel(room.visibility)
+                    : ""}
+                </span>
+              ) : null}
+              {summary ? (
+                <span
+                  className={cn(
+                    "mt-1 block text-sm leading-5 text-muted",
+                    isAttachment ? "line-clamp-2" : "line-clamp-1",
+                  )}
+                >
+                  {summary}
+                </span>
+              ) : null}
             </Link>
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-[3.25rem] text-xs text-muted">
@@ -105,20 +99,6 @@ export function RoomCard({ index = 0, room, variant = "list" }: RoomCardProps) {
               <UsersRound aria-hidden="true" size={13} />
               {formatCountWithUnit(room.memberCount, "member")}
             </span>
-            {room.latestActivityAt ? (
-              <span className="inline-flex items-center gap-1.5">
-                <Clock3 aria-hidden="true" size={13} />
-                {formatActivityTime(room.latestActivityAt)}
-              </span>
-            ) : null}
-            {room.owner ? (
-              <span className="inline-flex min-w-0 items-center gap-1">
-                <span className="text-muted/75">by</span>
-                <InlineUserProfileLink user={room.owner}>
-                  @{room.owner.handle}
-                </InlineUserProfileLink>
-              </span>
-            ) : null}
           </div>
           {isAttachment ? (
             <div className="flex justify-end border-t border-line/55 pt-2">
@@ -152,8 +132,4 @@ function roomVisibilityLabel(visibility: Room["visibility"]): string {
   }
 
   return "Public";
-}
-
-function formatActivityTime(value: string): string {
-  return formatRelativeTime(value).replace(/^now$/, "active now");
 }

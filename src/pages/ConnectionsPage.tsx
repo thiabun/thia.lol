@@ -16,11 +16,9 @@ import { Navigate, useNavigate, useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { ProfileConnectionIcon } from "../components/social/ProfileConnectionIcon";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
-import { Badge } from "../components/ui/Badge";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { ModalSheet } from "../components/ui/ModalSheet";
 import { Panel } from "../components/ui/Panel";
-import { RouteHeader } from "../components/ui/RouteState";
 import {
   disconnectProfileIntegration,
   getMyProfileIntegrations,
@@ -231,27 +229,32 @@ export function ConnectionsPage() {
     : "connection";
 
   return (
-    <main className="mx-auto w-full max-w-4xl space-y-4 px-3 py-5 sm:px-4 lg:px-6">
+    <section
+      className="mx-auto w-full max-w-4xl space-y-3 px-3 py-3 sm:px-4 lg:px-6"
+      aria-label="Connections"
+      data-testid="connections-page"
+    >
       <PageMeta
         title="Connections"
         description="Manage connected provider accounts."
         path={connectionsPath}
       />
-      <RouteHeader
-        surface="bare"
-        title="Connections"
-        description="Connect accounts that can power profile modules and suggestions."
-        actions={
-          <ButtonLink
-            to="/settings"
-            size="sm"
-            variant="ghost"
-            icon={<ArrowLeft aria-hidden="true" size={15} />}
-          >
-            Back to Settings
-          </ButtonLink>
-        }
-      />
+      <h1 className="sr-only">Connections</h1>
+      <nav
+        className="flex min-h-11 items-center"
+        aria-label="Connections navigation"
+        data-testid="connections-toolbar"
+      >
+        <ButtonLink
+          to="/settings"
+          size="sm"
+          className="min-h-11"
+          variant="ghost"
+          icon={<ArrowLeft aria-hidden="true" size={15} />}
+        >
+          Back to Settings
+        </ButtonLink>
+      </nav>
 
       {notice ? <ConnectionsNotice tone={notice.kind}>{notice.message}</ConnectionsNotice> : null}
 
@@ -259,14 +262,13 @@ export function ConnectionsPage() {
         <ApiStateNotice
           kind="loading"
           title="Loading connections"
-          text="Checking connected provider accounts."
           testId="connections-loading"
         />
       ) : error || !connections ? (
         <ApiStateNotice
           kind="error"
           title="Connections could not load"
-          text={error ?? "Try again in a moment."}
+          {...(error ? { text: error } : {})}
           testId="connections-error"
           actions={
             <Button
@@ -282,12 +284,6 @@ export function ConnectionsPage() {
         />
       ) : (
         <Panel className="overflow-hidden" data-testid="connections-provider-list">
-          <div className="border-b border-line/65 px-3 py-3 sm:px-4">
-            <h2 className="text-base font-semibold text-text">Provider accounts</h2>
-            <p className="mt-1 text-sm leading-5 text-muted">
-              Public profile links and Apple Music links stay in profile editing.
-            </p>
-          </div>
           <div className="divide-y divide-line/65">
             {managedProviders.map((provider) => {
               const providerStatus = connections.providers.find(
@@ -296,42 +292,43 @@ export function ConnectionsPage() {
               const account = activeAccountForProvider(connections.accounts, provider);
               const availability = providerAvailability(providerStatus?.oauthEnabled, diagnostics);
               const busy = busyProvider === provider;
+              const connectionState = account
+                ? "connected"
+                : availability.available
+                  ? "available"
+                  : "unavailable";
+              const availabilityDescriptionId = `connections-availability-${provider}`;
 
               return (
                 <div
                   key={provider}
                   className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-3 py-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:px-4"
+                  data-connection-state={connectionState}
                   data-testid={`connections-provider-row-${provider}`}
                 >
                   <span className="grid size-10 shrink-0 place-items-center rounded-control border border-line bg-canvas/55 text-text">
                     <ProfileConnectionIcon platform={provider} size={18} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-sm font-semibold text-text">
-                        {providerLabels[provider]}
-                      </h3>
-                      {account ? (
-                        <Badge tone="leaf" data-testid={`connections-status-${provider}`}>
-                          Connected
-                        </Badge>
-                      ) : availability.available ? (
-                        <Badge data-testid={`connections-status-${provider}`}>
-                          Ready to connect
-                        </Badge>
-                      ) : (
-                        <Badge tone="cool" data-testid={`connections-status-${provider}`}>
-                          Not available
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="mt-1 truncate text-sm text-muted">
-                      {account
-                        ? connectedAccountLabel(account)
-                        : availability.available
-                          ? `Connect your ${providerLabels[provider]} account.`
-                          : availability.message}
-                    </p>
+                    <h2 className="text-sm font-semibold text-text">
+                      {providerLabels[provider]}
+                    </h2>
+                    {account ? (
+                      <p
+                        className="mt-1 truncate text-sm text-muted"
+                        data-testid={`connections-identity-${provider}`}
+                      >
+                        {connectedAccountLabel(account)}
+                      </p>
+                    ) : !availability.available ? (
+                      <p
+                        id={availabilityDescriptionId}
+                        className="mt-1 text-sm leading-5 text-muted"
+                        data-testid={`connections-unavailable-${provider}`}
+                      >
+                        {availability.message}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="col-start-2 flex shrink-0 flex-wrap items-center gap-2 sm:col-start-auto sm:justify-end">
                     {account ? (
@@ -351,6 +348,9 @@ export function ConnectionsPage() {
                         type="button"
                         size="sm"
                         disabled={!availability.available || busy}
+                        aria-describedby={
+                          availability.available ? undefined : availabilityDescriptionId
+                        }
                         icon={<Link2 aria-hidden="true" size={15} />}
                         data-testid={`connections-connect-${provider}`}
                         onClick={() => void handleConnect(provider)}
@@ -370,7 +370,6 @@ export function ConnectionsPage() {
         open={disconnectTarget !== undefined}
         onClose={() => setDisconnectTarget(undefined)}
         title={`Disconnect ${disconnectLabel}?`}
-        description="Remove this provider account from thia.lol."
         closeLabel="Close disconnect confirmation"
         size="sm"
         mobile="dialog"
@@ -406,7 +405,7 @@ export function ConnectionsPage() {
           or remove them.
         </p>
       </ModalSheet>
-    </main>
+    </section>
   );
 }
 

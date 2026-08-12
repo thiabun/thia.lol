@@ -16,25 +16,21 @@ import { popoverPanel } from "../lib/motionPresets";
 const themes: Array<{
   value: ThemePreference;
   label: string;
-  description: string;
   icon: typeof Sun;
 }> = [
   {
     value: "light",
     label: "Light",
-    description: "Warm, calm standard theme",
     icon: Sun,
   },
   {
     value: "dark",
     label: "Dark",
-    description: "Deep green standard theme",
     icon: Moon,
   },
   {
     value: "profile",
     label: "Profile Theme",
-    description: "Use your profile appearance site-wide",
     icon: Palette,
   },
 ];
@@ -233,7 +229,7 @@ export function ThemeToggle({
             aria-label="Site theme"
             onKeyDown={handleRadioGroupKeyDown}
           >
-            {themes.map(({ value, label, description, icon: Icon }) => {
+            {themes.map(({ value, label, icon: Icon }) => {
               const selected = themePreference === value;
               const unavailable = value === "profile" && !profileThemeAvailable;
 
@@ -268,9 +264,11 @@ export function ThemeToggle({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-semibold text-text">{label}</span>
-                    <span className="block text-xs leading-snug text-muted">
-                      {unavailable ? "Sign in to use your profile theme" : description}
-                    </span>
+                    {unavailable ? (
+                      <span className="block text-xs leading-snug text-muted">
+                        Sign in to use your profile theme
+                      </span>
+                    ) : null}
                   </span>
                   {selected ? (
                     <Check aria-hidden="true" className="shrink-0 text-accent-strong" size={17} />

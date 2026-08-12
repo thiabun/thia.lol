@@ -36,7 +36,7 @@ test("Light, Dark, and Profile Theme stay distinct and persist across the app", 
   page,
 }) => {
   await page.goto("/discover");
-  await expect(page.getByRole("heading", { name: "Discover", exact: true })).toBeVisible();
+  await expect(page.getByTestId("discover-layout")).toBeVisible();
 
   const root = page.locator("html");
   const trigger = page.getByTestId("theme-menu-trigger");

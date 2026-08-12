@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { motion } from "motion/react";
 import {
   Activity,
@@ -50,10 +56,16 @@ import {
 } from "../lib/api";
 import { parseApiTimestamp } from "../lib/dates";
 import { cn } from "../lib/classNames";
+import { distinctContextText } from "../lib/displayText";
 import { pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
 import { roomThemeSwatchCssProperties } from "../lib/roomThemes";
-import type { AdminGrowthMetrics, BadgeDefinition, Room, UserBadge } from "../lib/types";
+import type {
+  AdminGrowthMetrics,
+  BadgeDefinition,
+  Room,
+  UserBadge,
+} from "../lib/types";
 import { useAuth } from "../lib/useAuth";
 
 type ActionName = "hide" | "remove" | "suspend" | "review" | "dismiss";
@@ -82,7 +94,9 @@ export function AdminPage() {
   const [badgeKey, setBadgeKey] = useState("");
   const [badgeReason, setBadgeReason] = useState("");
   const [badgeMessage, setBadgeMessage] = useState<string>();
-  const [notesByReport, setNotesByReport] = useState<Record<number, string>>({});
+  const [notesByReport, setNotesByReport] = useState<Record<number, string>>(
+    {},
+  );
   const isModerator = user?.role === "moderator" || user?.role === "admin";
   const isAdmin = user?.role === "admin";
 
@@ -94,7 +108,9 @@ export function AdminPage() {
       setReports(await getAdminReports());
     } catch (loadError) {
       setError(
-        loadError instanceof Error ? loadError.message : "Could not load reports.",
+        loadError instanceof Error
+          ? loadError.message
+          : "Could not load reports.",
       );
     } finally {
       setLoading(false);
@@ -109,7 +125,9 @@ export function AdminPage() {
       setRooms(await getAdminRooms());
     } catch (loadError) {
       setRoomsError(
-        loadError instanceof Error ? loadError.message : "Could not load rooms.",
+        loadError instanceof Error
+          ? loadError.message
+          : "Could not load rooms.",
       );
     } finally {
       setLoadingRooms(false);
@@ -124,7 +142,9 @@ export function AdminPage() {
       setBadges(await getAdminBadges());
     } catch (loadError) {
       setBadgesError(
-        loadError instanceof Error ? loadError.message : "Could not load badges.",
+        loadError instanceof Error
+          ? loadError.message
+          : "Could not load badges.",
       );
     } finally {
       setLoadingBadges(false);
@@ -139,7 +159,9 @@ export function AdminPage() {
       setGrowth(await getAdminGrowthMetrics());
     } catch (loadError) {
       setGrowthError(
-        loadError instanceof Error ? loadError.message : "Could not load growth metrics.",
+        loadError instanceof Error
+          ? loadError.message
+          : "Could not load growth metrics.",
       );
     } finally {
       setLoadingGrowth(false);
@@ -177,7 +199,13 @@ export function AdminPage() {
       (report) => report.reportedUser?.status === "suspended",
     ).length;
 
-    return { open, closed, hiddenPosts, suspendedUsers, badges: badges.badges.length };
+    return {
+      open,
+      closed,
+      hiddenPosts,
+      suspendedUsers,
+      badges: badges.badges.length,
+    };
   }, [badges.badges.length, reports]);
   async function runAction(
     report: ModerationReport,
@@ -235,7 +263,9 @@ export function AdminPage() {
       await loadBadges();
     } catch (actionError) {
       setBadgesError(
-        actionError instanceof Error ? actionError.message : "Badge could not be granted.",
+        actionError instanceof Error
+          ? actionError.message
+          : "Badge could not be granted.",
       );
     } finally {
       setPendingBadgeAction(undefined);
@@ -264,7 +294,9 @@ export function AdminPage() {
       await loadBadges();
     } catch (actionError) {
       setBadgesError(
-        actionError instanceof Error ? actionError.message : "Badge could not be revoked.",
+        actionError instanceof Error
+          ? actionError.message
+          : "Badge could not be revoked.",
       );
     } finally {
       setPendingBadgeAction(undefined);
@@ -282,11 +314,7 @@ export function AdminPage() {
   if (status === "loading") {
     return (
       <AdminShell>
-        <ApiStateNotice
-          kind="loading"
-          title="Checking admin session"
-          text="Checking access."
-        />
+        <ApiStateNotice kind="loading" title="Checking admin session" />
       </AdminShell>
     );
   }
@@ -294,9 +322,8 @@ export function AdminPage() {
   if (!user) {
     return (
       <AdminShell>
-        <Panel className="p-5 sm:p-6">
-          <Badge tone="rose">restricted</Badge>
-          <h1 className="mt-4 text-2xl font-semibold text-text">Sign in required</h1>
+        <Panel className="max-w-xl p-4 sm:p-5">
+          <h1 className="text-2xl font-semibold text-text">Sign in required</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
             Admin requires a moderator account.
           </p>
@@ -311,9 +338,8 @@ export function AdminPage() {
   if (!isModerator) {
     return (
       <AdminShell>
-        <Panel className="p-5 sm:p-6">
-          <Badge tone="rose">restricted</Badge>
-          <h1 className="mt-4 text-2xl font-semibold text-text">
+        <Panel className="max-w-xl p-4 sm:p-5">
+          <h1 className="text-2xl font-semibold text-text">
             Moderator access required
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
@@ -326,35 +352,33 @@ export function AdminPage() {
 
   return (
     <AdminShell>
-      <Panel className="p-4 sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-normal text-text sm:text-3xl">
-              Admin
-            </h1>
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon"
-            aria-label="Refresh admin data"
-            title="Refresh admin data"
-            disabled={loading || loadingRooms || loadingBadges || loadingGrowth}
-            icon={<RefreshCw aria-hidden="true" size={15} />}
-            onClick={() => {
-              void loadReports();
-              void loadRooms();
-              void loadBadges();
-              if (isAdmin) {
-                void loadGrowth();
-              }
-            }}
-          />
-        </div>
-      </Panel>
+      <h1 className="sr-only">Admin</h1>
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          aria-label="Refresh admin data"
+          title="Refresh admin data"
+          disabled={loading || loadingRooms || loadingBadges || loadingGrowth}
+          icon={<RefreshCw aria-hidden="true" size={15} />}
+          onClick={() => {
+            void loadReports();
+            void loadRooms();
+            void loadBadges();
+            if (isAdmin) {
+              void loadGrowth();
+            }
+          }}
+        />
+      </div>
 
       <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-        <AdminMetric icon={Activity} label="Open reports" value={String(metrics.open)} />
+        <AdminMetric
+          icon={Activity}
+          label="Open reports"
+          value={String(metrics.open)}
+        />
         <AdminMetric
           icon={CheckCircle2}
           label="Closed reports"
@@ -385,23 +409,9 @@ export function AdminPage() {
         />
       ) : null}
 
-      <AdminSection
-        badge="reports"
-        badgeTone="rose"
-        title="Report queue"
-        meta={
-          <span className="inline-flex items-center gap-2 text-sm text-muted">
-            <Shield aria-hidden="true" size={16} />
-            {formatCountWithUnit(reports.length, "report")}
-          </span>
-        }
-      >
+      <AdminSection title="Report queue">
         {loading ? (
-          <ApiStateNotice
-            kind="loading"
-            title="Loading reports"
-            text="Loading queue."
-          />
+          <ApiStateNotice kind="loading" title="Loading reports" />
         ) : null}
 
         {error ? (
@@ -413,11 +423,7 @@ export function AdminPage() {
         ) : null}
 
         {reports.length === 0 && !loading && !error ? (
-          <EmptyState
-            icon={Shield}
-            title="No reports yet"
-            text="Reported content appears here."
-          />
+          <EmptyState icon={Shield} title="No reports yet" />
         ) : null}
 
         {reports.length > 0 ? (
@@ -535,8 +541,6 @@ function GrowthMetricsPanel({
 }) {
   return (
     <AdminSection
-      badge="growth"
-      badgeTone="cool"
       title="Growth"
       meta={
         growth ? (
@@ -547,11 +551,7 @@ function GrowthMetricsPanel({
       }
     >
       {loading ? (
-        <ApiStateNotice
-          kind="loading"
-          title="Loading growth metrics"
-          text="Loading signup attribution."
-        />
+        <ApiStateNotice kind="loading" title="Loading growth metrics" />
       ) : null}
       {error ? (
         <ApiStateNotice
@@ -597,7 +597,10 @@ function GrowthBucketList({
           <p className="text-sm text-muted">No attributed signups yet.</p>
         ) : (
           items.map((item) => (
-            <div key={item.key} className="flex items-center justify-between gap-3 text-sm">
+            <div
+              key={item.key}
+              className="flex items-center justify-between gap-3 text-sm"
+            >
               <span className="min-w-0 truncate text-muted">{item.key}</span>
               <span className="font-semibold text-text">{item.count}</span>
             </div>
@@ -641,6 +644,7 @@ function AdminShell({ children }: { children: ReactNode }) {
   return (
     <motion.div
       className="mx-auto max-w-7xl space-y-4"
+      data-testid="admin-page"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -656,36 +660,19 @@ function AdminShell({ children }: { children: ReactNode }) {
 }
 
 type AdminSectionProps = {
-  badge: string;
-  badgeTone?: BadgeTone;
   children: ReactNode;
   className?: string;
-  description?: string;
   meta?: ReactNode;
   title: string;
 };
 
-function AdminSection({
-  badge,
-  badgeTone = "default",
-  children,
-  className,
-  description,
-  meta,
-  title,
-}: AdminSectionProps) {
+function AdminSection({ children, className, meta, title }: AdminSectionProps) {
   return (
     <Panel className={cn("overflow-hidden", className)}>
       <div className="border-b border-line/70 bg-canvas/30 p-3 sm:p-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <Badge tone={badgeTone}>{badge}</Badge>
-            <h2 className="mt-2 text-lg font-semibold text-text">{title}</h2>
-            {description ? (
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-                {description}
-              </p>
-            ) : null}
+            <h2 className="text-lg font-semibold text-text">{title}</h2>
           </div>
           {meta ? <div className="shrink-0">{meta}</div> : null}
         </div>
@@ -738,23 +725,12 @@ function BadgeAdminPanel({
   ];
 
   return (
-    <AdminSection
-      badge="badges"
-      badgeTone="warm"
-      title="Badge management"
-      meta={
-        <span className="inline-flex items-center gap-2 text-sm text-muted">
-          <Award aria-hidden="true" size={16} />
-          {formatCountWithUnit(activeBadges.length, "definition")}
-        </span>
-      }
-    >
+    <AdminSection title="Badge management">
       {loading ? (
         <CompactStateNotice
           icon={LoaderCircle}
           kind="loading"
           title="Loading badges"
-          text="Loading badge data."
         />
       ) : null}
 
@@ -768,11 +744,7 @@ function BadgeAdminPanel({
       ) : null}
 
       {message ? (
-        <CompactStateNotice
-          icon={CheckCircle2}
-          title={message}
-          text="Updated."
-        />
+        <CompactStateNotice icon={CheckCircle2} title={message} />
       ) : null}
 
       <div className="rounded-card bg-canvas/45 p-3">
@@ -818,18 +790,20 @@ function BadgeAdminPanel({
 
       {activeBadges.length > 0 ? (
         <div>
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-text">Active definitions</h3>
-            <span className="text-xs text-muted">
-              {activeBadges.length.toLocaleString()} active
-            </span>
-          </div>
+          <h3 className="text-sm font-semibold text-text">
+            Active definitions
+          </h3>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {activeBadges.map((badge) => (
-              <div key={badge.badgeKey} className="rounded-card bg-canvas/45 p-3">
+              <div
+                key={badge.badgeKey}
+                className="rounded-card bg-canvas/45 p-3"
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h4 className="text-sm font-semibold text-text">{badge.name}</h4>
+                    <h4 className="text-sm font-semibold text-text">
+                      {badge.name}
+                    </h4>
                     <p className="mt-1 truncate text-xs text-muted">
                       {badge.badgeKey}
                     </p>
@@ -848,11 +822,7 @@ function BadgeAdminPanel({
           </div>
         </div>
       ) : !loading && !error ? (
-        <CompactStateNotice
-          icon={Award}
-          title="No active badge definitions"
-          text="No active definitions."
-        />
+        <CompactStateNotice icon={Award} title="No active badge definitions" />
       ) : null}
 
       {recentGrants.length > 0 ? (
@@ -890,7 +860,9 @@ function BadgeAdminPanel({
                     icon={<Trash2 aria-hidden="true" size={15} />}
                     onClick={() => onRevoke(grant)}
                   >
-                    {pendingAction === `revoke:${grant.id}` ? "Revoking" : "Revoke"}
+                    {pendingAction === `revoke:${grant.id}`
+                      ? "Revoking"
+                      : "Revoke"}
                   </Button>
                 ) : null}
               </div>
@@ -898,11 +870,7 @@ function BadgeAdminPanel({
           </div>
         </div>
       ) : !loading && !error ? (
-        <CompactStateNotice
-          icon={Award}
-          title="No recent grants"
-          text="No recent badge changes."
-        />
+        <CompactStateNotice icon={Award} title="No recent grants" />
       ) : null}
     </AdminSection>
   );
@@ -937,7 +905,8 @@ function ReportRow({
     report.post !== null &&
     report.post.status !== "hidden" &&
     report.post.status !== "removed";
-  const canRemovePost = report.post !== null && report.post.status !== "removed";
+  const canRemovePost =
+    report.post !== null && report.post.status !== "removed";
   const canSuspendUser =
     report.reportedUser !== null &&
     report.reportedUser.status !== "suspended" &&
@@ -949,24 +918,24 @@ function ReportRow({
 
   return (
     <Panel
-      className={cn(
-        "p-3 sm:p-4",
-        report.status === "open" && "border-rose/30",
-      )}
+      className={cn("p-3 sm:p-4", report.status === "open" && "border-rose/30")}
     >
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={statusTone(report.status)}>{statusLabel(report.status)}</Badge>
+            <Badge tone={statusTone(report.status)}>
+              {statusLabel(report.status)}
+            </Badge>
             <Badge>{categoryLabel(report.category)}</Badge>
-            <Badge tone="cool">{targetTypeLabel(report.targetType)}</Badge>
             <span className="text-xs text-muted">#{report.id}</span>
             <span className="inline-flex items-center gap-1 text-xs text-muted">
               <Shield aria-hidden="true" size={13} />
               {report.actionCount}
             </span>
           </div>
-          <h2 className="mt-2 text-base font-semibold text-text">{targetTitle}</h2>
+          <h2 className="mt-2 text-base font-semibold text-text">
+            {targetTitle}
+          </h2>
           <p className="mt-1 text-sm leading-6 text-muted">
             Reported by <UserLabel user={report.reporter} /> ·{" "}
             {formatDate(report.createdAt)}
@@ -978,8 +947,12 @@ function ReportRow({
         <div className="space-y-3">
           {report.details ? (
             <div className="rounded-card bg-canvas/45 p-3">
-              <p className="text-xs font-medium uppercase text-muted">Reporter note</p>
-              <p className="mt-2 text-sm leading-6 text-text">{report.details}</p>
+              <p className="text-xs font-medium uppercase text-muted">
+                Reporter note
+              </p>
+              <p className="mt-2 text-sm leading-6 text-text">
+                {report.details}
+              </p>
             </div>
           ) : null}
 
@@ -1001,14 +974,18 @@ function ReportRow({
 
           {report.actionTaken || report.moderatorNote || report.reviewedBy ? (
             <div className="rounded-card bg-canvas/45 p-3">
-              <p className="text-xs font-medium uppercase text-muted">Action taken</p>
+              <p className="text-xs font-medium uppercase text-muted">
+                Action taken
+              </p>
               <p className="mt-2 text-sm font-semibold text-text">
                 {actionTakenLabel(report.actionTaken)}
               </p>
               {report.reviewedBy ? (
                 <p className="mt-1 text-xs text-muted">
                   by <UserLabel user={report.reviewedBy} />
-                  {report.reviewedAt ? ` · ${formatDate(report.reviewedAt)}` : ""}
+                  {report.reviewedAt
+                    ? ` · ${formatDate(report.reviewedAt)}`
+                    : ""}
                 </p>
               ) : null}
               {report.moderatorNote ? (
@@ -1021,16 +998,6 @@ function ReportRow({
         </div>
 
         <div className="space-y-3">
-          <div className="rounded-card bg-canvas/45 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-medium uppercase text-muted">
-                Target summary
-              </p>
-              <Badge tone="cool">{targetTypeLabel(report.targetType)}</Badge>
-            </div>
-            <p className="mt-2 text-sm font-semibold text-text">{targetTitle}</p>
-            <p className="mt-1 text-xs text-muted">{targetSummaryText(report)}</p>
-          </div>
           {report.profile ? (
             <TargetSummary label="Profile" user={report.profile} />
           ) : null}
@@ -1154,23 +1121,12 @@ type RoomMetadataPanelProps = {
 
 function RoomMetadataPanel({ error, loading, rooms }: RoomMetadataPanelProps) {
   return (
-    <AdminSection
-      badge="rooms"
-      badgeTone="cool"
-      title="Room administration"
-      meta={
-        <span className="inline-flex items-center gap-2 text-sm text-muted">
-          <Radio aria-hidden="true" size={16} />
-          {formatCountWithUnit(rooms.length, "room")}
-        </span>
-      }
-    >
+    <AdminSection title="Room administration">
       {loading ? (
         <CompactStateNotice
           icon={LoaderCircle}
           kind="loading"
           title="Loading room metadata"
-          text="Loading rooms."
         />
       ) : null}
 
@@ -1190,11 +1146,7 @@ function RoomMetadataPanel({ error, loading, rooms }: RoomMetadataPanelProps) {
           ))}
         </div>
       ) : !loading && !error ? (
-        <CompactStateNotice
-          icon={Radio}
-          title="No rooms to review"
-          text="No rooms yet."
-        />
+        <CompactStateNotice icon={Radio} title="No rooms to review" />
       ) : null}
     </AdminSection>
   );
@@ -1213,7 +1165,9 @@ function AdminMetric({ icon: Icon, label, value }: AdminMetricProps) {
         <Icon aria-hidden="true" size={16} />
       </div>
       <div className="min-w-0">
-        <p className="text-[0.68rem] font-medium uppercase text-muted">{label}</p>
+        <p className="text-[0.68rem] font-medium uppercase text-muted">
+          {label}
+        </p>
         <p className="text-lg font-semibold text-text">{value}</p>
       </div>
     </div>
@@ -1221,6 +1175,8 @@ function AdminMetric({ icon: Icon, label, value }: AdminMetricProps) {
 }
 
 function AdminRoomRow({ room }: { room: Room }) {
+  const summary = distinctContextText(room.summary, room.name, room.slug);
+
   return (
     <div className="rounded-card bg-canvas/45 p-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1235,7 +1191,9 @@ function AdminRoomRow({ room }: { room: Room }) {
           />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="cool">{room.visibility ?? "public"}</Badge>
+              {room.visibility && room.visibility !== "public" ? (
+                <Badge tone="cool">{room.visibility}</Badge>
+              ) : null}
               <span className="text-xs text-muted">#{room.id}</span>
             </div>
             <h3 className="mt-1 truncate text-sm font-semibold text-text">
@@ -1253,9 +1211,9 @@ function AdminRoomRow({ room }: { room: Room }) {
           Open room
         </ButtonLink>
       </div>
-      {room.summary ? (
+      {summary ? (
         <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted">
-          {room.summary}
+          {summary}
         </p>
       ) : null}
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
@@ -1304,7 +1262,11 @@ function TargetSummary({
   );
 }
 
-function RoomReportSummary({ room }: { room: NonNullable<ModerationReport["room"]> }) {
+function RoomReportSummary({
+  room,
+}: {
+  room: NonNullable<ModerationReport["room"]>;
+}) {
   return (
     <div className="rounded-card bg-canvas/45 p-3">
       <p className="text-xs font-medium uppercase text-muted">Room</p>
@@ -1376,17 +1338,6 @@ function categoryLabel(category: ReportCategory): string {
   return labels[category];
 }
 
-function targetTypeLabel(targetType: ModerationReport["targetType"]): string {
-  const labels: Record<ModerationReport["targetType"], string> = {
-    post: "Post",
-    profile: "Profile",
-    room: "Room",
-    message: "Message",
-  };
-
-  return labels[targetType];
-}
-
 function targetLabel(report: ModerationReport): string {
   if (report.post) {
     return "Reported post";
@@ -1405,26 +1356,6 @@ function targetLabel(report: ModerationReport): string {
   }
 
   return "Reported content";
-}
-
-function targetSummaryText(report: ModerationReport): string {
-  if (report.post) {
-    return `Post by ${report.post.author?.handle ? `@${report.post.author.handle}` : "unknown user"}`;
-  }
-
-  if (report.profile) {
-    return `${report.profile.displayName} (@${report.profile.handle}) · ${report.profile.status}`;
-  }
-
-  if (report.room) {
-    return `/${report.room.slug} · ${report.room.visibility}`;
-  }
-
-  if (report.message) {
-    return `Message from ${report.message.sender?.handle ? `@${report.message.sender.handle}` : "unknown user"}`;
-  }
-
-  return targetTypeLabel(report.targetType);
 }
 
 function actionTakenLabel(value: string | null): string {
@@ -1455,7 +1386,11 @@ function statusLabel(status: ModerationReportStatus): string {
 }
 
 function statusTone(status: ModerationReportStatus): BadgeTone {
-  if (status === "reviewed" || status === "dismissed" || status === "actioned") {
+  if (
+    status === "reviewed" ||
+    status === "dismissed" ||
+    status === "actioned"
+  ) {
     return "leaf";
   }
 

@@ -1,4 +1,4 @@
-import { Compass, MessageCircle, Radio, Search, SearchX } from "lucide-react";
+import { MessageCircle, SearchX } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -6,11 +6,11 @@ import { Link, useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Avatar } from "../components/ui/Avatar";
-import { ButtonLink } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { SearchField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import { getSearchResults } from "../lib/api";
+import { distinctContextText } from "../lib/displayText";
 import { pageEntrance } from "../lib/motionPresets";
 import type { Room, SearchResults } from "../lib/types";
 
@@ -120,59 +120,23 @@ export function SearchPage() {
         path="/search"
       />
 
-      <div className="space-y-3">
-        <h1 className="text-2xl font-semibold tracking-normal text-text sm:text-3xl">
-          Search
-        </h1>
-        <SearchField
-          id="site-search"
-          label="Search thia.lol"
-          placeholder="Profiles, rooms, and posts"
-          value={query}
-          autoComplete="off"
-          autoFocus
-          onChange={(event) => setQuery(event.currentTarget.value)}
-        />
-      </div>
+      <h1 className="sr-only">Search</h1>
+      <SearchField
+        id="site-search"
+        label="Search thia.lol"
+        placeholder="Profiles, rooms, and posts"
+        value={query}
+        autoComplete="off"
+        autoFocus
+        onChange={(event) => setQuery(event.currentTarget.value)}
+      />
 
       {trimmedQuery && !queryReady ? (
         <p className="text-sm text-muted">Use at least {minimumQueryLength} characters.</p>
       ) : null}
 
-      {!trimmedQuery ? (
-        <EmptyState
-          icon={Search}
-          title="Search thia.lol"
-          text="Type a handle, name, room, or topic."
-          actions={
-            <div className="flex flex-wrap justify-center gap-2">
-              <ButtonLink
-                to="/discover"
-                variant="secondary"
-                size="sm"
-                icon={<Compass aria-hidden="true" size={15} />}
-              >
-                Discover
-              </ButtonLink>
-              <ButtonLink
-                to="/rooms"
-                variant="secondary"
-                size="sm"
-                icon={<Radio aria-hidden="true" size={15} />}
-              >
-                Rooms
-              </ButtonLink>
-            </div>
-          }
-        />
-      ) : null}
-
       {queryReady && loading ? (
-        <ApiStateNotice
-          kind="loading"
-          title="Searching"
-          text="Searching profiles, rooms, and posts."
-        />
+        <ApiStateNotice kind="loading" title="Searching" />
       ) : null}
 
       {queryReady && activeError ? (
@@ -195,7 +159,7 @@ export function SearchPage() {
         <div className="space-y-4" aria-live="polite">
           <p className="text-sm font-medium text-muted">{resultSummary}</p>
           {profileResults.length > 0 ? (
-            <ResultGroup title="Profiles" count={profileResults.length}>
+            <ResultGroup title="Profiles">
               <div className="grid gap-3 sm:grid-cols-2">
                 {profileResults.map((profile) => (
                   <ProfileResult
@@ -207,7 +171,7 @@ export function SearchPage() {
             </ResultGroup>
           ) : null}
           {roomResults.length > 0 ? (
-            <ResultGroup title="Rooms" count={roomResults.length}>
+            <ResultGroup title="Rooms">
               <div className="grid gap-3 sm:grid-cols-2">
                 {roomResults.map((room) => (
                   <RoomResult key={room.slug} room={room} />
@@ -216,7 +180,7 @@ export function SearchPage() {
             </ResultGroup>
           ) : null}
           {postResults.length > 0 ? (
-            <ResultGroup title="Posts" count={postResults.length}>
+            <ResultGroup title="Posts">
               <div className="grid gap-3 sm:grid-cols-2">
                 {postResults.map((post) => (
                   <PostResult key={post.id} post={post} />
@@ -232,21 +196,14 @@ export function SearchPage() {
 
 function ResultGroup({
   children,
-  count,
   title,
 }: {
   children: ReactNode;
-  count: number;
   title: string;
 }) {
   return (
     <section className="space-y-2.5" aria-label={title}>
-      <div className="flex items-center gap-2">
-        <h2 className="text-base font-semibold text-text">{title}</h2>
-        <span className="rounded-full bg-surface-strong px-2 py-0.5 text-xs font-medium text-muted">
-          {count}
-        </span>
-      </div>
+      <h2 className="text-base font-semibold text-text">{title}</h2>
       {children}
     </section>
   );
@@ -284,6 +241,13 @@ function ProfileResult({
 }
 
 function RoomResult({ room }: { room: Room }) {
+  const showSlug = Boolean(distinctContextText(room.slug, room.name));
+  const description = distinctContextText(
+    room.description || room.summary,
+    room.name,
+    room.slug,
+  );
+
   return (
     <Link
       to={`/rooms/${room.slug}`}
@@ -295,10 +259,12 @@ function RoomResult({ room }: { room: Room }) {
           <RoomIcon room={room} />
           <div className="min-w-0">
             <h3 className="truncate text-sm font-semibold text-text">{room.name}</h3>
-            <p className="mt-0.5 truncate text-sm text-muted">/{room.slug}</p>
-            {room.description || room.summary ? (
+            {showSlug ? (
+              <p className="mt-0.5 truncate text-sm text-muted">/{room.slug}</p>
+            ) : null}
+            {description ? (
               <p className="mt-1.5 line-clamp-1 text-sm leading-6 text-muted">
-                {room.description || room.summary}
+                {description}
               </p>
             ) : null}
           </div>

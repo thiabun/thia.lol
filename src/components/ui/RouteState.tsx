@@ -1,68 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "../../lib/classNames";
-import { Badge } from "./Badge";
 import { Panel } from "./Panel";
-
-type BadgeTone = "default" | "warm" | "cool" | "leaf" | "rose";
-
-type RouteHeaderProps = {
-  actions?: ReactNode;
-  badge?: string;
-  badgeTone?: BadgeTone;
-  className?: string;
-  description: string;
-  inlineStatus?: ReactNode;
-  meta?: ReactNode;
-  surface?: "panel" | "bare";
-  title: string;
-};
-
-export function RouteHeader({
-  actions,
-  badge,
-  badgeTone = "default",
-  className,
-  description,
-  inlineStatus,
-  meta,
-  surface = "panel",
-  title,
-}: RouteHeaderProps) {
-  const content = (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-      <div className="max-w-2xl">
-        {badge ? <Badge tone={badgeTone}>{badge}</Badge> : null}
-        <div
-          className={cn(
-            "flex flex-wrap items-center gap-x-3 gap-y-1",
-            badge ? "mt-2" : undefined,
-          )}
-        >
-          <h1 className="text-2xl font-semibold tracking-normal text-text sm:text-3xl">
-            {title}
-          </h1>
-          {inlineStatus}
-        </div>
-        <p className="mt-1 text-sm leading-6 text-muted sm:text-base">
-          {description}
-        </p>
-        {meta ? <div className="mt-2">{meta}</div> : null}
-      </div>
-      {actions ? (
-        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-          {actions}
-        </div>
-      ) : null}
-    </div>
-  );
-
-  if (surface === "bare") {
-    return <div className={cn("py-2", className)}>{content}</div>;
-  }
-
-  return <Panel className={cn("p-3 sm:p-4", className)}>{content}</Panel>;
-}
 
 type RouteStateNoticeKind = "neutral" | "loading" | "error";
 
@@ -72,7 +11,7 @@ type RouteStateNoticeProps = {
   icon: LucideIcon;
   kind?: RouteStateNoticeKind;
   testId?: string;
-  text: string;
+  text?: string;
   title: string;
 };
 
@@ -108,7 +47,9 @@ export function RouteStateNotice({
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold text-text">{title}</h2>
-          <p className="mt-1 max-w-xl text-sm leading-6 text-muted">{text}</p>
+          {stateTextIsUseful(title, text) ? (
+            <p className="mt-1 max-w-xl text-sm leading-6 text-muted">{text}</p>
+          ) : null}
           {actions ? (
             <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
               {actions}
@@ -127,7 +68,7 @@ type CompactStateNoticeProps = {
   icon: LucideIcon;
   kind?: RouteStateNoticeKind;
   testId?: string;
-  text: string;
+  text?: string;
   title: string;
 };
 
@@ -168,7 +109,9 @@ export function CompactStateNotice({
         </div>
         <div className={cn("min-w-0", centered ? "mt-3" : "")}>
           <h2 className="text-sm font-semibold text-text">{title}</h2>
-          <p className="mt-1 text-sm leading-6 text-muted">{text}</p>
+          {stateTextIsUseful(title, text) ? (
+            <p className="mt-1 text-sm leading-6 text-muted">{text}</p>
+          ) : null}
           {actions ? (
             <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
               {actions}
@@ -178,4 +121,15 @@ export function CompactStateNotice({
       </div>
     </div>
   );
+}
+
+function stateTextIsUseful(title: string, text?: string) {
+  if (!text?.trim()) {
+    return false;
+  }
+
+  const normalize = (value: string) =>
+    value.toLocaleLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+  return normalize(title) !== normalize(text);
 }

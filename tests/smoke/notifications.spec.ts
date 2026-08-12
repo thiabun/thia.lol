@@ -14,19 +14,16 @@ test("notifications page renders empty state and keeps nav placement", async ({
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/notifications");
 
+  await expect(page.getByTestId("notifications-page")).toBeVisible();
+  await expect(page.getByTestId("notifications-toolbar")).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Notifications", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByTestId("notifications-unread-count")).toHaveText(
-    "0 unread",
-  );
+  ).toHaveClass(/sr-only/);
+  await expect(page.getByText("Updates.", { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("notifications-unread-count")).toHaveCount(0);
   await expect(page.getByText("No notifications yet")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Mark all as read" })).toBeDisabled();
-  await expect(page.getByTestId("desktop-notifications-card")).toBeVisible();
-  await expect(page.getByTestId("desktop-notifications-state")).toContainText(
-    /setup needed|unsupported|blocked/,
-  );
-  await expect(page.getByTestId("desktop-notifications-enable")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Mark all as read" })).toHaveCount(0);
+  await expect(page.getByTestId("desktop-notifications-card")).toHaveCount(0);
 
   const nav = page.getByTestId("desktop-nav");
   await expect(nav.getByRole("link", { name: "Chat" })).toBeVisible();
@@ -41,11 +38,41 @@ test("notifications page renders empty state and keeps nav placement", async ({
 test("mobile primary nav keeps Chat while notifications use the header", async ({
   page,
 }) => {
-  await mockAuthenticatedEmptyNotifications(page);
+  await mockAuthenticatedNotifications(page, [
+    {
+      id: 9,
+      type: "follow",
+      createdAt: "2026-06-10 10:00:00",
+      readAt: null,
+      actor: {
+        id: 2,
+        handle: "alex",
+        displayName: "Alex",
+        initials: "A",
+        aura: "frost",
+        avatarUrl: null,
+      },
+      post: null,
+      room: null,
+      targetUrl: "/@alex",
+      data: null,
+    },
+  ]);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/notifications");
 
   await expect(page.getByRole("link", { name: "Notifications" })).toBeVisible();
+  const toolbar = page.getByTestId("notifications-toolbar");
+  await expect(toolbar).toBeVisible();
+  const markAllButton = toolbar.getByRole("button", { name: "Mark all as read" });
+  await expect(markAllButton).toBeEnabled();
+  const toolbarLayout = await toolbar.evaluate((element) => ({
+    buttonHeight: element.querySelector<HTMLElement>("button")?.offsetHeight ?? 0,
+    viewportOverflow:
+      document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  }));
+  expect(toolbarLayout.buttonHeight).toBeGreaterThanOrEqual(44);
+  expect(toolbarLayout.viewportOverflow).toBe(false);
 
   const nav = page.getByTestId("mobile-nav");
   await expect(nav.getByRole("link", { name: "Chat" })).toBeVisible();
@@ -57,11 +84,13 @@ test("logged-out notifications route keeps route hierarchy", async ({ page }) =>
   await mockAnonymousNotifications(page);
   await page.goto("/notifications");
 
-  await expect(
-    page.getByRole("heading", { name: "Notifications", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByTestId("notifications-page")).toBeVisible();
   await expect(page.getByText("Sign in to see notifications.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByText("Notifications require sign-in.")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Notifications", exact: true }),
+  ).toHaveClass(/sr-only/);
 });
 
 test("notification actor identity links to the actor profile", async ({ page }) => {
@@ -229,9 +258,8 @@ test("mark all notifications as read works against the API", async ({ page }) =>
   expect(result.data?.unreadCount).toBe(0);
 
   await page.goto("/notifications");
-  await expect(page.getByTestId("notifications-unread-count")).toHaveText(
-    "0 unread",
-  );
+  await expect(page.getByTestId("notifications-toolbar")).toHaveCount(0);
+  await expect(page.getByTestId("notifications-unread-count")).toHaveCount(0);
 });
 
 async function mockAuthenticatedEmptyNotifications(page: Page) {

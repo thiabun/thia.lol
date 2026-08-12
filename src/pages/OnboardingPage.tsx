@@ -1,13 +1,11 @@
 import {
   ArrowLeft,
   ArrowRight,
-  BellRing,
   Check,
   CheckCircle2,
   ExternalLink,
   LayoutGrid,
   Link2,
-  Music2,
   Save,
   Sparkles,
   UserRound,
@@ -27,7 +25,6 @@ import { PageMeta } from "../components/PageMeta";
 import { DesktopNotificationsCard } from "../components/notifications/DesktopNotificationsCard";
 import { ProfileConnectionIcon } from "../components/social/ProfileConnectionIcon";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
-import { Badge } from "../components/ui/Badge";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import {
@@ -51,7 +48,6 @@ import { useAuth } from "../lib/useAuth";
 const oauthProviders = ["spotify", "youtube", "twitch", "github"] as const;
 const providerSteps = [...oauthProviders, "apple_music"] as const;
 type WizardStep =
-  | "welcome"
   | "profile_basics"
   | "integrations"
   | "apple_music"
@@ -68,7 +64,6 @@ type ProviderProblemMap = Partial<Record<ProfileIntegrationProvider, string>>;
 type SetupPathId = "identity" | "connect" | "module" | "save";
 
 type SetupPathItem = {
-  description: string;
   icon: ReactNode;
   id: SetupPathId;
   label: string;
@@ -77,28 +72,24 @@ type SetupPathItem = {
 
 const onboardingPathItems: SetupPathItem[] = [
   {
-    description: "Tell the world who you are.",
     icon: <UserRound aria-hidden="true" size={17} />,
     id: "identity",
     label: "Identity",
     step: "profile_basics",
   },
   {
-    description: "Link the places you are on.",
     icon: <Link2 aria-hidden="true" size={17} />,
     id: "connect",
     label: "Connect",
     step: "integrations",
   },
   {
-    description: "Add something to your canvas.",
     icon: <LayoutGrid aria-hidden="true" size={17} />,
     id: "module",
     label: "Place a module",
     step: "profile_canvas",
   },
   {
-    description: "Publish your space to the world.",
     icon: <Save aria-hidden="true" size={17} />,
     id: "save",
     label: "Save",
@@ -112,7 +103,9 @@ export function OnboardingPage() {
   const [searchParams] = useSearchParams();
   const integrationReturnHandledRef = useRef<string | undefined>(undefined);
   const [state, setState] = useState<OnboardingState | undefined>();
-  const [providers, setProviders] = useState<ProfileIntegrationProviderStatus[]>([]);
+  const [providers, setProviders] = useState<
+    ProfileIntegrationProviderStatus[]
+  >([]);
   const [diagnostics, setDiagnostics] = useState<
     ProfileIntegrationDiagnostics | undefined
   >();
@@ -120,12 +113,16 @@ export function OnboardingPage() {
   const [loadingState, setLoadingState] = useState(true);
   const [loadingIntegrations, setLoadingIntegrations] = useState(true);
   const [error, setError] = useState<string | undefined>();
-  const [integrationError, setIntegrationError] = useState<string | undefined>();
-  const [providerProblems, setProviderProblems] = useState<ProviderProblemMap>({});
+  const [integrationError, setIntegrationError] = useState<
+    string | undefined
+  >();
+  const [providerProblems, setProviderProblems] = useState<ProviderProblemMap>(
+    {},
+  );
   const [notice, setNotice] = useState<ReturnNotice | undefined>();
   const [busyAction, setBusyAction] = useState<string | undefined>();
   const [appleMusicUrl, setAppleMusicUrl] = useState("");
-  const [activeStep, setActiveStep] = useState<WizardStep>("welcome");
+  const [activeStep, setActiveStep] = useState<WizardStep>("profile_basics");
   const completed = useMemo(
     () => new Set(state?.completedSteps ?? []),
     [state?.completedSteps],
@@ -154,7 +151,7 @@ export function OnboardingPage() {
 
       setState(nextState);
       setActiveStep((current) =>
-        current === "welcome" ? defaultWizardStep(nextState) : current,
+        current === "profile_basics" ? defaultWizardStep(nextState) : current,
       );
     } catch (caught) {
       setError(
@@ -194,11 +191,12 @@ export function OnboardingPage() {
       );
     } else {
       setDiagnostics(undefined);
-      setIntegrationError((current) =>
-        current ??
-        (diagnosticsResult.reason instanceof Error
-          ? diagnosticsResult.reason.message
-          : "Could not load integration diagnostics."),
+      setIntegrationError(
+        (current) =>
+          current ??
+          (diagnosticsResult.reason instanceof Error
+            ? diagnosticsResult.reason.message
+            : "Could not load integration diagnostics."),
       );
     }
 
@@ -227,7 +225,9 @@ export function OnboardingPage() {
   }, [reloadAll, status]);
 
   useEffect(() => {
-    const provider = normalizeProviderParam(searchParams.get("integrationProvider"));
+    const provider = normalizeProviderParam(
+      searchParams.get("integrationProvider"),
+    );
     const integrationStatus = searchParams.get("integrationStatus");
 
     if (!provider || !integrationStatus || status !== "authenticated") {
@@ -250,14 +250,19 @@ export function OnboardingPage() {
       }
 
       integrationReturnHandledRef.current = returnKey;
-      setActiveStep(provider === "apple_music" ? "apple_music" : "integrations");
+      setActiveStep(
+        provider === "apple_music" ? "apple_music" : "integrations",
+      );
 
       if (integrationStatus === "connected") {
         setNotice({
           kind: "success",
           message: `${providerLabel(provider)} connected.`,
         });
-        setProviderProblems((current) => ({ ...current, [provider]: undefined }));
+        setProviderProblems((current) => ({
+          ...current,
+          [provider]: undefined,
+        }));
         void runWithAuth(
           (csrfToken) =>
             updateOnboardingState(
@@ -269,7 +274,9 @@ export function OnboardingPage() {
           .then(setState)
           .catch((caught: unknown) => {
             setError(
-              caught instanceof Error ? caught.message : "Could not save setup.",
+              caught instanceof Error
+                ? caught.message
+                : "Could not save setup.",
             );
           })
           .finally(() => void loadIntegrations());
@@ -301,15 +308,14 @@ export function OnboardingPage() {
     return () => {
       active = false;
     };
-  }, [
-    loadIntegrations,
-    runWithAuth,
-    searchParams,
-    status,
-  ]);
+  }, [loadIntegrations, runWithAuth, searchParams, status]);
 
   if (status === "loading") {
-    return <OnboardingLoading />;
+    return (
+      <div data-testid="onboarding-page">
+        <OnboardingLoading />
+      </div>
+    );
   }
 
   if (status === "anonymous") {
@@ -335,7 +341,9 @@ export function OnboardingPage() {
         setActiveStep(nextStep);
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not save setup.");
+      setError(
+        caught instanceof Error ? caught.message : "Could not save setup.",
+      );
     } finally {
       setBusyAction(undefined);
     }
@@ -353,7 +361,9 @@ export function OnboardingPage() {
       setState(nextState);
       navigate(target);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not finish setup.");
+      setError(
+        caught instanceof Error ? caught.message : "Could not finish setup.",
+      );
     } finally {
       setBusyAction(undefined);
     }
@@ -366,7 +376,8 @@ export function OnboardingPage() {
 
     try {
       const result = await runWithAuth(
-        (csrfToken) => startProfileIntegration(provider, csrfToken, "/onboarding"),
+        (csrfToken) =>
+          startProfileIntegration(provider, csrfToken, "/onboarding"),
         { retryOnCsrf: true },
       );
 
@@ -419,7 +430,9 @@ export function OnboardingPage() {
       setActiveStep("profile_canvas");
     } catch (caught) {
       setError(
-        caught instanceof Error ? caught.message : "Could not save Apple Music.",
+        caught instanceof Error
+          ? caught.message
+          : "Could not save Apple Music.",
       );
     } finally {
       setBusyAction(undefined);
@@ -428,9 +441,8 @@ export function OnboardingPage() {
 
   const profileBasicsDone =
     completed.has("profile_basics") || skipped.has("profile_basics");
-  const canvasDone = completed.has("profile_canvas") || skipped.has("profile_canvas");
-  const desktopNotificationsDone =
-    completed.has("desktop_notifications") || skipped.has("desktop_notifications");
+  const canvasDone =
+    completed.has("profile_canvas") || skipped.has("profile_canvas");
   const connectionsDone = providerSteps.some(
     (provider) =>
       providerComplete(provider, completed, connectedProviders, state) ||
@@ -442,12 +454,11 @@ export function OnboardingPage() {
     Number(canvasDone) +
     Number(Boolean(state?.finishedAt));
   const progressTotal = onboardingPathItems.length;
-  const activePathItem = onboardingPathItemForStep(activeStep);
-  const welcomeActive = activeStep === "welcome";
 
   return (
     <motion.div
       className="mx-auto w-full max-w-6xl space-y-4 sm:space-y-5"
+      data-testid="onboarding-page"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -457,18 +468,7 @@ export function OnboardingPage() {
         description="Build your first thia.lol profile."
         path="/onboarding"
       />
-
-      <section>
-        <div className="min-w-0">
-          <h1 className="text-3xl font-semibold tracking-normal text-text">
-            Build your first profile
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-muted">
-            Your profile is a space you compose: start with who you are,
-            connect what matters, then place modules on your canvas.
-          </p>
-        </div>
-      </section>
+      <h1 className="sr-only">Profile setup</h1>
 
       {notice ? (
         <p
@@ -496,59 +496,40 @@ export function OnboardingPage() {
       {loadingState ? (
         <OnboardingLoading />
       ) : (
-        <div
-          className={cn(
-            "grid gap-4",
-            welcomeActive
-              ? "mx-auto max-w-5xl"
-              : "lg:grid-cols-[17rem_minmax(0,1fr)]",
-          )}
-        >
-          {welcomeActive ? null : (
-            <OnboardingProgressRail
-              activeStep={activeStep}
-              canvasDone={canvasDone}
-              connectionsDone={connectionsDone}
-              profileBasicsDone={profileBasicsDone}
-              state={state}
-              onSelect={setActiveStep}
-            />
-          )}
+        <div className="grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
+          <OnboardingProgressRail
+            activeStep={activeStep}
+            canvasDone={canvasDone}
+            connectionsDone={connectionsDone}
+            profileBasicsDone={profileBasicsDone}
+            state={state}
+            onSelect={setActiveStep}
+          />
 
-          <Panel
-            className={cn(
-              "overflow-hidden p-0",
-              welcomeActive ? "min-h-0" : "min-h-[34rem]",
-            )}
-          >
-            {welcomeActive ? null : (
-              <div className="border-b border-line bg-canvas/42 px-4 py-3 sm:px-5">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
-                    {progressDone}/{progressTotal} profile moves handled
-                  </p>
-                  <div className="flex min-w-0 flex-1 justify-end lg:hidden">
-                    <span className="truncate text-xs font-semibold text-muted">
-                      {activePathItem.label}
-                    </span>
-                  </div>
-                </div>
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-line/45">
-                  <motion.div
-                    className="h-full rounded-full bg-accent"
-                    initial={false}
-                    animate={{
-                      width: `${Math.max(
-                        8,
-                        ((onboardingPathItems.indexOf(activePathItem) + 1) /
-                          onboardingPathItems.length) *
-                          100,
-                      )}%`,
-                    }}
-                  />
-                </div>
+          <Panel className="overflow-hidden p-0">
+            <div className="border-b border-line bg-canvas/42 px-4 py-3 sm:px-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold text-muted">
+                  {progressDone} of {progressTotal}
+                </p>
               </div>
-            )}
+              <div
+                className="mt-3 h-1.5 overflow-hidden rounded-full bg-line/45"
+                role="progressbar"
+                aria-label="Profile setup progress"
+                aria-valuemin={0}
+                aria-valuemax={progressTotal}
+                aria-valuenow={progressDone}
+              >
+                <motion.div
+                  className="h-full rounded-full bg-accent"
+                  initial={false}
+                  animate={{
+                    width: `${(progressDone / progressTotal) * 100}%`,
+                  }}
+                />
+              </div>
+            </div>
 
             <AnimatePresence mode="wait">
               <motion.div
@@ -560,19 +541,9 @@ export function OnboardingPage() {
                 transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
                 data-testid={`onboarding-step-${activeStep}`}
               >
-                {activeStep === "welcome" ? (
-                  <WelcomeStep
-                    displayName={user?.displayName ?? user?.handle ?? "you"}
-                    handle={user?.handle ?? "you"}
-                    profileTourUrl={profileTourUrl}
-                    onContinue={() => setActiveStep("profile_basics")}
-                  />
-                ) : null}
-
                 {activeStep === "profile_basics" ? (
                   <ProfileBasicsStep
                     busyAction={busyAction}
-                    done={profileBasicsDone}
                     profileTourUrl={profileTourUrl}
                     onSkip={() =>
                       void updateStep(
@@ -588,15 +559,12 @@ export function OnboardingPage() {
                   <IntegrationsStep
                     accounts={accounts}
                     busyAction={busyAction}
-                    completed={completed}
-                    connectedProviders={connectedProviders}
                     diagnostics={diagnostics}
                     integrationError={integrationError}
                     loading={loadingIntegrations}
                     providerProblems={providerProblems}
                     providers={providers}
                     skipped={skipped}
-                    state={state}
                     onConnect={(provider) => void connectProvider(provider)}
                     onContinue={() => setActiveStep("apple_music")}
                     onSkip={(provider) =>
@@ -608,20 +576,17 @@ export function OnboardingPage() {
                 {activeStep === "apple_music" ? (
                   <AppleMusicStep
                     busy={busyAction === "apple_music:url"}
-                    complete={providerComplete(
-                      "apple_music",
-                      completed,
-                      connectedProviders,
-                      state,
-                    )}
                     savedUrl={state?.providerLinks.apple_music?.url}
-                    skipped={skipped.has("apple_music")}
                     value={appleMusicUrl}
                     onBack={() => setActiveStep("integrations")}
                     onChange={setAppleMusicUrl}
                     onContinue={() => setActiveStep("profile_canvas")}
                     onSkip={() =>
-                      void updateStep("skip_step", "apple_music", "profile_canvas")
+                      void updateStep(
+                        "skip_step",
+                        "apple_music",
+                        "profile_canvas",
+                      )
                     }
                     onSubmit={saveAppleMusicLink}
                   />
@@ -630,7 +595,6 @@ export function OnboardingPage() {
                 {activeStep === "profile_canvas" ? (
                   <ProfileCanvasStep
                     busyAction={busyAction}
-                    done={canvasDone}
                     profileTourUrl={profileTourUrl}
                     onBack={() => setActiveStep("apple_music")}
                     onSkip={() =>
@@ -646,7 +610,6 @@ export function OnboardingPage() {
                 {activeStep === "desktop_notifications" ? (
                   <DesktopNotificationsStep
                     busyAction={busyAction}
-                    done={desktopNotificationsDone}
                     onBack={() => setActiveStep("profile_canvas")}
                     onComplete={() =>
                       void updateStep(
@@ -668,8 +631,6 @@ export function OnboardingPage() {
                 {activeStep === "finish" ? (
                   <FinishStep
                     busy={busyAction === "finish"}
-                    progressDone={progressDone}
-                    progressTotal={progressTotal}
                     profileUrl={profileUrl}
                     onBack={() => setActiveStep("desktop_notifications")}
                     onFinish={() => void finishOnboarding(profileUrl)}
@@ -687,11 +648,7 @@ export function OnboardingPage() {
 function OnboardingLoading() {
   return (
     <div className="mx-auto max-w-4xl">
-      <ApiStateNotice
-        kind="loading"
-        title="Loading setup"
-        text="Loading profile setup."
-      />
+      <ApiStateNotice kind="loading" title="Loading setup" />
     </div>
   );
 }
@@ -713,7 +670,10 @@ function OnboardingProgressRail({
 }) {
   return (
     <aside className="hidden lg:block">
-      <Panel className="sticky top-24 grid gap-2 p-3" data-testid="onboarding-progress-rail">
+      <Panel
+        className="sticky top-24 grid gap-2 p-3"
+        data-testid="onboarding-progress-rail"
+      >
         {onboardingPathItems.map((item, index) => {
           const complete = onboardingPathComplete(
             item.id,
@@ -729,7 +689,7 @@ function OnboardingProgressRail({
               key={item.id}
               type="button"
               className={cn(
-                "flex min-h-16 items-center gap-3 rounded-control px-3 text-left text-sm font-semibold transition",
+                "flex min-h-12 items-center gap-3 rounded-control px-3 text-left text-sm font-semibold transition",
                 active
                   ? "bg-accent text-accent-ink shadow-soft"
                   : "text-muted hover:bg-surface hover:text-text",
@@ -749,17 +709,7 @@ function OnboardingProgressRail({
               >
                 {complete ? <Check aria-hidden="true" size={14} /> : index + 1}
               </span>
-              <span className="min-w-0">
-                <span className="block truncate">{item.label}</span>
-                <span
-                  className={cn(
-                    "mt-0.5 block truncate text-xs font-medium",
-                    active ? "text-accent-ink/78" : "text-muted",
-                  )}
-                >
-                  {item.description}
-                </span>
-              </span>
+              <span className="min-w-0 truncate">{item.label}</span>
             </button>
           );
         })}
@@ -768,136 +718,18 @@ function OnboardingProgressRail({
   );
 }
 
-function WelcomeStep({
-  displayName,
-  handle,
-  onContinue,
-  profileTourUrl,
-}: {
-  displayName: string;
-  handle: string;
-  onContinue: () => void;
-  profileTourUrl: string;
-}) {
-  return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,0.82fr)_minmax(22rem,1.18fr)]">
-      <div className="grid content-center gap-6">
-        <div className="max-w-2xl">
-          <h2 className="text-3xl font-semibold text-text">
-            Start by making the canvas real.
-          </h2>
-          <p className="mt-3 text-base leading-7 text-muted">
-            A profile is not a form. It is your identity, the places you are on
-            the internet, and modules you can move around until the page feels
-            like yours.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <ButtonLink
-            to={profileTourUrl}
-            icon={<ArrowRight aria-hidden="true" size={16} />}
-            data-testid="onboarding-start"
-          >
-            Open guided editor
-          </ButtonLink>
-          <Button type="button" variant="ghost" onClick={onContinue}>
-            Setup checklist
-          </Button>
-        </div>
-      </div>
-      <ProfileCanvasPreview displayName={displayName} handle={handle} />
-    </div>
-  );
-}
-
-function ProfileCanvasPreview({
-  displayName,
-  handle,
-}: {
-  displayName: string;
-  handle: string;
-}) {
-  return (
-    <div
-      className="overflow-hidden rounded-card border border-line bg-surface/82 shadow-soft"
-      data-testid="onboarding-profile-preview"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-canvas/50 px-4 py-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-text">thia.lol / {handle}</p>
-          <p className="mt-0.5 text-xs font-medium text-muted">Profile preview</p>
-        </div>
-      </div>
-      <div className="grid gap-4 p-4 sm:grid-cols-[7rem_minmax(0,1fr)]">
-        <aside className="min-w-0 space-y-3">
-          <span className="grid size-20 place-items-center rounded-full border border-line bg-surface text-3xl shadow-soft">
-            {displayName.trim().charAt(0).toUpperCase() || "T"}
-          </span>
-          <div>
-            <p className="truncate text-base font-semibold text-text">
-              {displayName}
-            </p>
-            <p className="truncate text-xs font-semibold text-muted">@{handle}</p>
-          </div>
-          <p className="text-xs font-medium leading-5 text-muted">
-            Start with a name, a little context, and one thing worth placing.
-          </p>
-        </aside>
-        <div className="relative min-h-[22rem] overflow-hidden rounded-card border border-line bg-[linear-gradient(90deg,color-mix(in_oklab,var(--line)_55%,transparent)_1px,transparent_1px),linear-gradient(180deg,color-mix(in_oklab,var(--line)_55%,transparent)_1px,transparent_1px)] bg-[size:3.5rem_3.5rem] p-5">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_45%,color-mix(in_oklab,var(--app-accent)_16%,transparent),transparent_34%)]" />
-          <PreviewModule className="left-[18%] top-[16%]" title="About me" text="A short hello that tells people what kind of space this is." />
-          <PreviewModule className="right-[8%] top-[24%]" title="Links" text="GitHub, website, and the places you want visible." />
-          <PreviewModule className="bottom-[10%] left-[10%]" title="Now playing" text="A song, playlist, or album that sets the mood." />
-          <div className="absolute bottom-[16%] right-[10%] grid size-24 place-items-center rounded-card border border-line bg-canvas/70 text-xs font-semibold text-muted shadow-soft">
-            Image
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PreviewModule({
-  className,
-  text,
-  title,
-}: {
-  className: string;
-  text: string;
-  title: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "absolute z-10 w-36 rounded-card border border-line bg-surface/90 p-3 shadow-soft backdrop-blur-veil",
-        className,
-      )}
-    >
-      <p className="truncate text-xs font-semibold text-text">{title}</p>
-      <p className="mt-2 text-[0.68rem] font-medium leading-4 text-muted">
-        {text}
-      </p>
-    </div>
-  );
-}
-
 function ProfileBasicsStep({
   busyAction,
-  done,
   onSkip,
   profileTourUrl,
 }: {
   busyAction: string | undefined;
-  done: boolean;
   onSkip: () => void;
   profileTourUrl: string;
 }) {
   return (
     <StepScaffold
-      badge={done ? "done" : "profile"}
-      title="Start with your identity"
-      text="Your name, picture, bio, and first modules all live in the editor. Open the guided editor when you are ready to shape the real profile surface."
-      icon={<UserRound aria-hidden="true" size={20} />}
+      title="Profile basics"
       footer={
         <WizardActions
           back={undefined}
@@ -930,40 +762,31 @@ function ProfileBasicsStep({
 function IntegrationsStep({
   accounts,
   busyAction,
-  completed,
-  connectedProviders,
   diagnostics,
   integrationError,
   loading,
   providerProblems,
   providers,
   skipped,
-  state,
   onConnect,
   onContinue,
   onSkip,
 }: {
   accounts: ProfileIntegrationAccount[];
   busyAction: string | undefined;
-  completed: Set<OnboardingStep>;
-  connectedProviders: Set<ProfileIntegrationProvider>;
   diagnostics: ProfileIntegrationDiagnostics | undefined;
   integrationError: string | undefined;
   loading: boolean;
   providerProblems: ProviderProblemMap;
   providers: ProfileIntegrationProviderStatus[];
   skipped: Set<OnboardingStep>;
-  state: OnboardingState | undefined;
   onConnect: (provider: ProfileIntegrationProvider) => void;
   onContinue: () => void;
   onSkip: (provider: (typeof oauthProviders)[number]) => void;
 }) {
   return (
     <StepScaffold
-      badge="accounts"
-      title="Connect the accounts you want to show off"
-      text="These connections power richer modules and suggestions. You can skip any provider and come back later from profile editing."
-      icon={<Link2 aria-hidden="true" size={20} />}
+      title="Connections"
       body={
         <div className="grid gap-3 md:grid-cols-2">
           {integrationError ? (
@@ -982,19 +805,12 @@ function IntegrationsStep({
             const account = accounts.find(
               (item) => item.provider === provider && !item.revokedAt,
             );
-            const complete = providerComplete(
-              provider,
-              completed,
-              connectedProviders,
-              state,
-            );
 
             return (
               <ProviderPanel
                 key={provider}
                 account={account}
                 busy={busyAction === `connect:${provider}`}
-                complete={complete}
                 diagnostics={diagnostics}
                 loading={loading}
                 problem={providerProblems[provider]}
@@ -1029,7 +845,6 @@ function IntegrationsStep({
 function ProviderPanel({
   account,
   busy,
-  complete,
   diagnostics,
   loading,
   problem,
@@ -1041,7 +856,6 @@ function ProviderPanel({
 }: {
   account: ProfileIntegrationAccount | undefined;
   busy: boolean;
-  complete: boolean;
   diagnostics: ProfileIntegrationDiagnostics | undefined;
   loading: boolean;
   problem: string | undefined;
@@ -1051,29 +865,34 @@ function ProviderPanel({
   onConnect: () => void;
   onSkip: () => void;
 }) {
-  const availability = providerAvailability(providerStatus, diagnostics, loading, account);
+  const availability = providerAvailability(
+    providerStatus,
+    diagnostics,
+    loading,
+    account,
+  );
   const disabled = Boolean(account) || availability.disabled || busy;
   const helper = problem ?? availability.message;
+  const providerMeta = account
+    ? (account.displayName ?? account.providerHandle)
+    : undefined;
 
   return (
-    <Panel className="flex min-h-44 flex-col justify-between gap-4 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="grid size-11 shrink-0 place-items-center rounded-card border border-line bg-canvas/55 text-text">
-            <ProfileConnectionIcon platform={provider} size={19} />
-          </span>
-          <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold text-text">
-              {providerLabel(provider)}
-            </h2>
+    <Panel className="flex flex-col justify-between gap-4 p-4">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="grid size-11 shrink-0 place-items-center rounded-card border border-line bg-canvas/55 text-text">
+          <ProfileConnectionIcon platform={provider} size={19} />
+        </span>
+        <div className="min-w-0">
+          <h2 className="truncate text-base font-semibold text-text">
+            {providerLabel(provider)}
+          </h2>
+          {providerMeta ? (
             <p className="mt-1 truncate text-xs font-medium text-muted">
-              {account
-                ? account.displayName ?? account.providerHandle ?? "Connected"
-                : availability.label}
+              {providerMeta}
             </p>
-          </div>
+          ) : null}
         </div>
-        <StepBadge complete={complete} skipped={skipped} />
       </div>
       {helper ? (
         <p
@@ -1091,7 +910,7 @@ function ProviderPanel({
           type="button"
           size="sm"
           disabled={disabled}
-          title={disabled ? helper : undefined}
+          title={disabled ? (helper ?? availability.label) : undefined}
           icon={
             account ? (
               <CheckCircle2 aria-hidden="true" size={15} />
@@ -1104,16 +923,18 @@ function ProviderPanel({
         >
           {account ? "Connected" : busy ? "Opening..." : "Connect"}
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          disabled={busy || Boolean(account)}
-          data-testid={`onboarding-skip-${provider}`}
-          onClick={onSkip}
-        >
-          Skip
-        </Button>
+        {skipped ? null : (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={busy || Boolean(account)}
+            data-testid={`onboarding-skip-${provider}`}
+            onClick={onSkip}
+          >
+            Skip
+          </Button>
+        )}
       </div>
     </Panel>
   );
@@ -1121,49 +942,47 @@ function ProviderPanel({
 
 function AppleMusicStep({
   busy,
-  complete,
   onBack,
   onChange,
   onContinue,
   onSkip,
   onSubmit,
   savedUrl,
-  skipped,
   value,
 }: {
   busy: boolean;
-  complete: boolean;
   onBack: () => void;
   onChange: (value: string) => void;
   onContinue: () => void;
   onSkip: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   savedUrl: string | undefined;
-  skipped: boolean;
   value: string;
 }) {
   return (
     <StepScaffold
-      badge="music"
-      title="Add Apple Music by link"
-      text="Apple Music stays manual for now. Paste a public music.apple.com song, album, playlist, or artist URL and we will validate it before saving."
-      icon={<Music2 aria-hidden="true" size={20} />}
+      title="Apple Music"
       body={
         <Panel className="grid gap-4 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-text">Apple Music</h2>
-              <p className="mt-1 text-sm font-medium text-muted">
-                {savedUrl ?? "Paste a music.apple.com link"}
-              </p>
-            </div>
-            <StepBadge complete={complete} skipped={skipped} />
-          </div>
+          {savedUrl ? (
+            <p className="break-all text-sm font-medium text-muted">
+              Saved: {savedUrl}
+            </p>
+          ) : null}
           <form className="grid gap-2" onSubmit={onSubmit}>
+            <label
+              className="text-sm font-semibold text-text"
+              htmlFor="onboarding-apple-music-url"
+            >
+              Apple Music URL
+            </label>
             <input
+              id="onboarding-apple-music-url"
+              type="url"
               className="min-h-11 w-full rounded-control border border-line bg-canvas/55 px-3 text-sm text-text outline-none transition placeholder:text-muted focus:border-line-strong focus:outline-2 focus:outline-focus"
               value={value}
               placeholder="https://music.apple.com/..."
+              required
               data-testid="onboarding-apple-music-url"
               onChange={(event) => onChange(event.currentTarget.value)}
             />
@@ -1211,23 +1030,19 @@ function AppleMusicStep({
 
 function ProfileCanvasStep({
   busyAction,
-  done,
   onBack,
   onSkip,
   profileTourUrl,
 }: {
   busyAction: string | undefined;
-  done: boolean;
   onBack: () => void;
   onSkip: () => void;
   profileTourUrl: string;
 }) {
   return (
     <StepScaffold
-      badge={done ? "done" : "editor"}
-      title="Place your first module"
-      text="Open the real editor. This step completes when you finish the editor guide or save the canvas."
-      icon={<Sparkles aria-hidden="true" size={20} />}
+      title="Profile canvas"
+      text="This step completes after you finish the editor guide or save the canvas."
       footer={
         <WizardActions
           back={onBack}
@@ -1259,23 +1074,18 @@ function ProfileCanvasStep({
 
 function DesktopNotificationsStep({
   busyAction,
-  done,
   onBack,
   onComplete,
   onSkip,
 }: {
   busyAction: string | undefined;
-  done: boolean;
   onBack: () => void;
   onComplete: () => void;
   onSkip: () => void;
 }) {
   return (
     <StepScaffold
-      badge={done ? "done" : "desktop"}
-      title="Turn on desktop notifications"
-      text="Desktop notifications are optional. Enable this browser to get follows, mentions, messages, and other chosen notification categories outside the app."
-      icon={<BellRing aria-hidden="true" size={20} />}
+      title={null}
       body={
         <DesktopNotificationsCard
           onHandled={(kind) => {
@@ -1320,22 +1130,15 @@ function FinishStep({
   onBack,
   onFinish,
   profileUrl,
-  progressDone,
-  progressTotal,
 }: {
   busy: boolean;
   onBack: () => void;
   onFinish: () => void;
   profileUrl: string;
-  progressDone: number;
-  progressTotal: number;
 }) {
   return (
     <StepScaffold
-      badge="ready"
-      title="You are ready to move in"
-      text={`${progressDone}/${progressTotal} setup items are handled. You can finish now and keep tuning your profile whenever you want.`}
-      icon={<CheckCircle2 aria-hidden="true" size={20} />}
+      title="Finish"
       footer={
         <WizardActions
           back={onBack}
@@ -1366,34 +1169,28 @@ function FinishStep({
 }
 
 function StepScaffold({
-  badge,
   body,
   footer,
-  icon,
   text,
   title,
 }: {
-  badge: string;
   body?: ReactNode;
   footer: ReactNode;
-  icon: ReactNode;
-  text: string;
-  title: string;
+  text?: string;
+  title: ReactNode;
 }) {
   return (
-    <div className="grid gap-5">
-      <div className="flex items-start gap-4">
-        <span className="grid size-12 shrink-0 place-items-center rounded-card border border-line bg-surface text-text shadow-soft">
-          {icon}
-        </span>
+    <div className="grid gap-4">
+      {title || text ? (
         <div className="min-w-0">
-          <Badge>{badge}</Badge>
-          <h2 className="mt-3 text-2xl font-semibold text-text">{title}</h2>
-          <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-muted">
-            {text}
-          </p>
+          {title ? <h2 className="text-lg font-semibold text-text">{title}</h2> : null}
+          {text ? (
+            <p className="mt-1 max-w-3xl text-sm font-medium leading-6 text-muted">
+              {text}
+            </p>
+          ) : null}
         </div>
-      </div>
+      ) : null}
       {body}
       {footer}
     </div>
@@ -1431,18 +1228,6 @@ function WizardActions({
   );
 }
 
-function StepBadge({ complete, skipped }: { complete: boolean; skipped: boolean }) {
-  if (complete) {
-    return <Badge tone="leaf">done</Badge>;
-  }
-
-  if (skipped) {
-    return <Badge tone="cool">skipped</Badge>;
-  }
-
-  return <Badge>open</Badge>;
-}
-
 function providerComplete(
   provider: (typeof providerSteps)[number],
   completed: Set<OnboardingStep>,
@@ -1461,10 +1246,14 @@ function defaultWizardStep(state: OnboardingState): WizardStep {
   const skipped = new Set(state.skippedSteps);
 
   if (!completed.has("profile_basics") && !skipped.has("profile_basics")) {
-    return "welcome";
+    return "profile_basics";
   }
 
-  if (!oauthProviders.some((provider) => completed.has(provider) || skipped.has(provider))) {
+  if (
+    !oauthProviders.some(
+      (provider) => completed.has(provider) || skipped.has(provider),
+    )
+  ) {
     return "integrations";
   }
 
@@ -1487,7 +1276,7 @@ function defaultWizardStep(state: OnboardingState): WizardStep {
 }
 
 function onboardingPathItemForStep(step: WizardStep): SetupPathItem {
-  if (step === "profile_basics" || step === "welcome") {
+  if (step === "profile_basics") {
     return onboardingPathItems[0]!;
   }
 
@@ -1535,7 +1324,11 @@ function providerAvailability(
   }
 
   if (loading) {
-    return { disabled: true, label: "Checking", message: "Checking connection setup." };
+    return {
+      disabled: true,
+      label: "Checking",
+      message: "Checking connection setup.",
+    };
   }
 
   if (diagnostics && !diagnostics.storageReady) {
@@ -1597,7 +1390,9 @@ function providerLabel(provider: ProfileIntegrationProvider): string {
   return labels[provider];
 }
 
-function normalizeProviderParam(value: string | null): ProfileIntegrationProvider | undefined {
+function normalizeProviderParam(
+  value: string | null,
+): ProfileIntegrationProvider | undefined {
   return value === "spotify" ||
     value === "youtube" ||
     value === "twitch" ||
@@ -1613,11 +1408,15 @@ function providerErrorMessage(
 ) {
   const messages: Record<string, string> = {
     invalid_or_expired_state: "The connection expired. Try connecting again.",
-    missing_callback_parameters: "The provider returned an incomplete response.",
-    oauth_callback_failed: "The provider approved access, but thia could not finish saving it.",
+    missing_callback_parameters:
+      "The provider returned an incomplete response.",
+    oauth_callback_failed:
+      "The provider approved access, but thia could not finish saving it.",
     provider_error: "The provider cancelled or rejected the connection.",
   };
-  const detail = error ? messages[error] ?? error.replaceAll("_", " ") : "Try again.";
+  const detail = error
+    ? (messages[error] ?? error.replaceAll("_", " "))
+    : "Try again.";
 
   return `${providerLabel(provider)} did not connect. ${detail}`;
 }

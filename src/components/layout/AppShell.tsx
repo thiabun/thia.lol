@@ -30,7 +30,7 @@ import {
 } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "react-router";
-import { BrandLogo, BrandMark } from "../BrandLogo";
+import { BrandLogo } from "../BrandLogo";
 import { ThemeToggle } from "../ThemeToggle";
 import { ProfilePersonalBackdrop } from "../social/ProfilePersonalBackdrop";
 import { Button, ButtonLink } from "../ui/Button";
@@ -81,6 +81,31 @@ const legalLinks = [
   { to: "/privacy", label: "Privacy" },
   { to: "/community-guidelines", label: "Guidelines" },
 ];
+
+const policyPaths = new Set([
+  "/terms",
+  "/privacy",
+  "/cookies",
+  "/community-guidelines",
+  "/copyright",
+  "/moderation",
+  "/data-export",
+  "/account-deletion",
+  "/refunds",
+  "/appeals",
+  "/safety",
+  "/content-ownership",
+  "/no-dark-patterns",
+  "/monetization-ethics",
+  "/ai-policy",
+  "/security",
+  "/vulnerability-disclosure",
+  "/transparency",
+  "/law-enforcement",
+  "/creator-marketplace",
+  "/accessibility",
+  "/incident-response",
+]);
 
 const bugReportUrl =
   "https://github.com/thiabun/thia.lol/issues/new?template=bug_report.yml";
@@ -668,7 +693,15 @@ export function AppShell() {
             />
           )}
         </div>
-        <SiteFooter onWhatsNewOpen={openWhatsNew} />
+        <SiteFooter
+          onWhatsNewOpen={openWhatsNew}
+          showLegalLinks={
+            location.pathname !== "/login" &&
+            location.pathname !== "/register" &&
+            location.pathname !== "/legal" &&
+            !policyPaths.has(location.pathname)
+          }
+        />
         {anonymousHome || focusedShellRoute ? null : (
           <Button
             type="button"
@@ -1296,40 +1329,37 @@ function MobileDock({
   );
 }
 
-function SiteFooter({ onWhatsNewOpen }: { onWhatsNewOpen: OpenWhatsNew }) {
+function SiteFooter({
+  onWhatsNewOpen,
+  showLegalLinks,
+}: {
+  onWhatsNewOpen: OpenWhatsNew;
+  showLegalLinks: boolean;
+}) {
   return (
     <footer
       className="mx-auto w-full max-w-7xl px-4 pb-[var(--app-mobile-content-bottom)] pt-1 sm:px-6 lg:px-8 lg:pb-8"
       data-testid="site-footer"
     >
       <div className="flex flex-col gap-4 border-t border-line py-4 text-xs text-muted sm:flex-row sm:items-start sm:justify-between">
-        <div className="max-w-3xl space-y-3 leading-5">
-          <div className="space-y-1">
-            <p>
-              © 2026 Thia Markussen. Alle rettigheter forbeholdt / All rights
-              reserved.
-            </p>
-            <p>
-              Beskyttet etter norsk opphavsrett og internasjonal opphavsrett /
-              Protected under Norwegian and international copyright law.
-            </p>
-          </div>
-        </div>
+        <p className="leading-5">© 2026 Thia Markussen. All rights reserved.</p>
         <div className="space-y-2 sm:max-w-sm sm:text-right">
           <nav
-            aria-label="Legal and trust"
+            aria-label="Footer links"
             className="flex flex-wrap gap-x-3 gap-y-2 sm:justify-end"
             data-testid="legal-footer-links"
           >
-            {legalLinks.map((link) => (
-              <Link
-                key={link.to}
-                to={link.to}
-                className="font-medium underline-offset-4 transition duration-fluid hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-              >
-                {link.label}
-              </Link>
-            ))}
+            {showLegalLinks
+              ? legalLinks.map((link) => (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    className="font-medium underline-offset-4 transition duration-fluid hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  >
+                    {link.label}
+                  </Link>
+                ))
+              : null}
             <button
               type="button"
               className="font-medium underline-offset-4 transition duration-fluid hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
@@ -1343,7 +1373,7 @@ function SiteFooter({ onWhatsNewOpen }: { onWhatsNewOpen: OpenWhatsNew }) {
               rel="noopener noreferrer"
               className="font-medium underline-offset-4 transition duration-fluid hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             >
-              Hey, want to support thia.lol?
+              Support thia.lol
             </a>
             <a
               href={bugReportUrl}
@@ -1387,13 +1417,6 @@ function CookieNotice({
       data-testid="cookie-notice"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-        <BrandMark
-          className="shadow-soft"
-          data-testid="cookie-brand-mark"
-          shape="squircle"
-          size="sm"
-          variant="pink"
-        />
         <p className="leading-6">
           thia.lol uses necessary cookies for sign-in and security. No analytics or
           marketing cookies are currently used.

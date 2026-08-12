@@ -5,9 +5,7 @@ const portraitMediaFixture = `data:image/svg+xml,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920"><rect width="1080" height="1920" fill="#f6e8b8"/><circle cx="540" cy="500" r="320" fill="#8fb7b1"/><rect x="360" y="980" width="360" height="640" rx="120" fill="#42526b"/></svg>',
 )}`;
 
-test("Anonymous home explains the product and renders real starter communities", async ({
-  page,
-}) => {
+test("Anonymous home starts with real posts and rooms", async ({ page }) => {
   await mockCommonApi(page);
   await page.route("**/api/rooms", (route) =>
     route.fulfill({
@@ -105,21 +103,11 @@ test("Anonymous home explains the product and renders real starter communities",
   const anonymousHome = page.getByTestId("anonymous-home");
   await expect(anonymousHome).toBeVisible();
   await expect(
-    page.getByRole("heading", {
-      name: "A calmer social home for creative people and small internet circles.",
-    }),
+    anonymousHome.getByRole("region", { name: "Recent posts" }),
   ).toBeVisible();
   await expect(
-    page.getByText(
-      "Make a profile that feels like you, gather in rooms, and post what you\u2019re making, playing, or thinking about. No ads, no engagement traps, and no AI sludge.",
-    ),
+    anonymousHome.getByRole("complementary", { name: "Rooms" }),
   ).toBeVisible();
-  await expect(
-    anonymousHome.getByRole("link", { name: "Explore rooms" }).first(),
-  ).toHaveAttribute("href", "/rooms");
-  await expect(
-    anonymousHome.getByRole("link", { name: "Create your profile" }).first(),
-  ).toHaveAttribute("href", "/register");
   const header = page.getByRole("banner");
   await expect(header.getByRole("link", { name: "Discover" })).toHaveAttribute(
     "href",
@@ -129,69 +117,59 @@ test("Anonymous home explains the product and renders real starter communities",
     "href",
     "/rooms",
   );
-  await expect(
-    header.getByRole("link", { name: "Sign in" }),
-  ).toHaveAttribute("href", "/login");
+  await expect(header.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+    "href",
+    "/login",
+  );
   await expect(
     header.getByRole("link", { name: "Create account" }),
   ).toHaveAttribute("href", "/register");
 
-  for (const section of ["Profiles", "Rooms", "Posts"]) {
-    await expect(anonymousHome.getByText(section, { exact: true })).toBeVisible();
-  }
-
-  await expect(anonymousHome.getByRole("heading", { name: "Start somewhere" })).toBeVisible();
-  const starterCommunities = anonymousHome.getByRole("region", {
-    name: "Starter communities",
-  });
-  await expect(starterCommunities).toBeVisible();
-  const roomCards = starterCommunities.getByTestId("room-card");
+  const rooms = anonymousHome.getByRole("complementary", { name: "Rooms" });
+  const roomCards = rooms.getByTestId("room-card");
   await expect(roomCards).toHaveCount(3);
-  await expect(roomCards.nth(0).getByRole("heading", { name: "Start Here" })).toBeVisible();
-  await expect(roomCards.nth(1).getByRole("heading", { name: "Show Your Work" })).toBeVisible();
-  await expect(roomCards.nth(2).getByRole("heading", { name: "Cozy Games" })).toBeVisible();
+  await expect(
+    roomCards.nth(0).getByRole("heading", { name: "Start Here" }),
+  ).toBeVisible();
+  await expect(
+    roomCards.nth(1).getByRole("heading", { name: "Show Your Work" }),
+  ).toBeVisible();
+  await expect(
+    roomCards.nth(2).getByRole("heading", { name: "Cozy Games" }),
+  ).toBeVisible();
   await expect(roomCards.nth(0).getByText("12 members")).toBeVisible();
-  await expect(roomCards.getByRole("heading", { name: "Garden" })).toHaveCount(0);
+  await expect(roomCards.getByRole("heading", { name: "Garden" })).toHaveCount(
+    0,
+  );
 
-  await expect(
-    anonymousHome.getByRole("heading", { name: "Fresh from the community" }),
-  ).toBeVisible();
-  await expect(
-    anonymousHome.getByRole("region", { name: "Fresh from the community" }),
-  ).toBeVisible();
+  const recentPosts = anonymousHome.getByRole("region", {
+    name: "Recent posts",
+  });
   await expect(anonymousHome.getByText("First public note.")).toBeVisible();
   await expect(anonymousHome.getByText("Fourth public note.")).toBeVisible();
   await expect(anonymousHome.getByText("Fifth public note.")).toBeVisible();
-  await expect(
-    anonymousHome
-      .getByRole("region", { name: "Fresh from the community" })
-      .getByTestId("post-card-open-thread"),
-  ).toHaveCount(4);
-  await expect(anonymousHome.getByRole("link", { name: "Open Discover" })).toHaveAttribute(
+  await expect(recentPosts.getByTestId("post-card-open-thread")).toHaveCount(5);
+  await expect(rooms.getByRole("link", { name: "View all" })).toHaveAttribute(
     "href",
-    "/discover",
+    "/rooms",
   );
-
+  await expect(page.getByText("How it works", { exact: true })).toHaveCount(0);
   await expect(
-    anonymousHome.getByRole("heading", { name: "Bring your corner of the internet." }),
-  ).toBeVisible();
-  await expect(
-    anonymousHome.getByText(
-      "Make a profile, join a room, or invite a few people you already like.",
-    ),
-  ).toBeVisible();
+    page.getByText("Bring your corner of the internet."),
+  ).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Search" })).toHaveCount(0);
   await expect(
     anonymousHome.getByRole("heading", { exact: true, name: "People" }),
   ).toHaveCount(0);
-  await expect(anonymousHome.getByRole("region", { name: "People to find" })).toHaveCount(0);
+  await expect(
+    anonymousHome.getByRole("region", { name: "People to find" }),
+  ).toHaveCount(0);
 
   await page.goto("/discover");
   await expect(page.getByTestId("anonymous-home-header")).toHaveCount(0);
-  await expect(page.getByRole("banner").getByRole("link", { name: "Search" })).toHaveAttribute(
-    "href",
-    "/search",
-  );
+  await expect(
+    page.getByRole("banner").getByRole("link", { name: "Search" }),
+  ).toHaveAttribute("href", "/search");
 });
 
 test("Anonymous home replaces unavailable starter rooms with active public rooms", async ({
@@ -247,7 +225,11 @@ test("Anonymous home replaces unavailable starter rooms with active public rooms
         data: {
           posts: [],
           activeRooms: [
-            makeDiscoverRoom({ id: 8, name: "Active Artists", slug: "active-artists" }),
+            makeDiscoverRoom({
+              id: 8,
+              name: "Active Artists",
+              slug: "active-artists",
+            }),
             makeDiscoverRoom({ id: 9, name: "Tiny Web", slug: "tiny-web" }),
             makeDiscoverRoom({ id: 10, name: "Garden", slug: "garden" }),
           ],
@@ -261,12 +243,24 @@ test("Anonymous home replaces unavailable starter rooms with active public rooms
 
   const roomCards = page.getByTestId("anonymous-home").getByTestId("room-card");
   await expect(roomCards).toHaveCount(3);
-  await expect(roomCards.nth(0).getByRole("heading", { name: "Active Artists" })).toBeVisible();
-  await expect(roomCards.nth(1).getByRole("heading", { name: "Tiny Web" })).toBeVisible();
-  await expect(roomCards.nth(2).getByRole("heading", { name: "Garden" })).toBeVisible();
-  await expect(roomCards.getByRole("heading", { name: "Start Here" })).toHaveCount(0);
-  await expect(roomCards.getByRole("heading", { name: "Show Your Work" })).toHaveCount(0);
-  await expect(roomCards.getByRole("heading", { name: "Cozy Games" })).toHaveCount(0);
+  await expect(
+    roomCards.nth(0).getByRole("heading", { name: "Active Artists" }),
+  ).toBeVisible();
+  await expect(
+    roomCards.nth(1).getByRole("heading", { name: "Tiny Web" }),
+  ).toBeVisible();
+  await expect(
+    roomCards.nth(2).getByRole("heading", { name: "Garden" }),
+  ).toBeVisible();
+  await expect(
+    roomCards.getByRole("heading", { name: "Start Here" }),
+  ).toHaveCount(0);
+  await expect(
+    roomCards.getByRole("heading", { name: "Show Your Work" }),
+  ).toHaveCount(0);
+  await expect(
+    roomCards.getByRole("heading", { name: "Cozy Games" }),
+  ).toHaveCount(0);
 });
 
 test("Anonymous home renders honest empty states for rooms and public posts", async ({
@@ -285,21 +279,28 @@ test("Anonymous home renders honest empty states for rooms and public posts", as
   await page.route("**/api/feed/home", (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: { posts: [], personalized: false } }),
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: [], personalized: false },
+      }),
     }),
   );
 
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "No starter rooms yet" })).toBeVisible();
   await expect(
-    page.getByText("Explore all rooms while new communities get ready."),
+    page.getByRole("heading", { name: "No rooms yet" }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "No posts yet" })).toBeVisible();
-  await expect(page.getByText("No public posts.")).toBeVisible();
+  await expect(page.getByText(/Explore all rooms/)).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "No posts yet" }),
+  ).toBeVisible();
+  await expect(page.getByText("No public posts.")).toHaveCount(0);
 });
 
-test("Anonymous home keeps rooms and activity failure states clear", async ({ page }) => {
+test("Anonymous home uses one compact public activity failure state", async ({
+  page,
+}) => {
   await mockCommonApi(page);
   await page.route("**/api/feed/discover**", (route) =>
     route.fulfill({
@@ -312,15 +313,12 @@ test("Anonymous home keeps rooms and activity failure states clear", async ({ pa
   await page.goto("/");
 
   await expect(
-    page.getByRole("heading", { name: "Starter rooms are not available" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Explore all rooms or try again in a moment."),
-  ).toBeVisible();
-  await expect(
     page.getByRole("heading", { name: "Public activity is not available" }),
   ).toBeVisible();
   await expect(page.getByText("Try refreshing in a moment.")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Starter rooms are not available" }),
+  ).toHaveCount(0);
 });
 
 test("Home waits for authentication before choosing an anonymous or signed-in branch", async ({
@@ -343,15 +341,15 @@ test("Home waits for authentication before choosing an anonymous or signed-in br
 
   await expect.poll(() => Boolean(releaseAuth)).toBe(true);
   await expect(page.getByTestId("anonymous-home")).toHaveCount(0);
-  await expect(page.getByRole("heading", { exact: true, name: "Home" })).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Home" }),
+  ).toHaveCount(0);
 
   releaseAuth?.();
 
   await expect(page.getByTestId("anonymous-home")).toBeVisible();
   await expect(
-    page.getByRole("heading", {
-      name: "A calmer social home for creative people and small internet circles.",
-    }),
+    page.getByRole("region", { name: "Recent posts" }),
   ).toBeVisible();
 });
 
@@ -360,13 +358,16 @@ test("Authenticated home loads the feed empty state", async ({ page }) => {
   await page.route("**/api/feed/home", (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: { posts: [], personalized: false } }),
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: [], personalized: false },
+      }),
     }),
   );
 
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
+  await expect(page.getByLabel("Home feed")).toBeVisible();
   await expect(page.getByText("No posts yet").first()).toBeVisible();
   await expect(page.getByTestId("anonymous-home")).toHaveCount(0);
   await expect(
@@ -376,7 +377,9 @@ test("Authenticated home loads the feed empty state", async ({ page }) => {
   ).toHaveCount(0);
 });
 
-test("Anonymous home stays contained across supported phone widths", async ({ page }) => {
+test("Anonymous home stays contained across supported phone widths", async ({
+  page,
+}) => {
   await mockCommonApi(page);
   await page.route("**/api/rooms", (route) =>
     route.fulfill({
@@ -385,7 +388,11 @@ test("Anonymous home stays contained across supported phone widths", async ({ pa
         ok: true,
         data: [
           makeDiscoverRoom({ id: 1, name: "Start Here", slug: "start-here" }),
-          makeDiscoverRoom({ id: 2, name: "Show Your Work", slug: "show-your-work" }),
+          makeDiscoverRoom({
+            id: 2,
+            name: "Show Your Work",
+            slug: "show-your-work",
+          }),
           makeDiscoverRoom({ id: 3, name: "Cozy Games", slug: "cozy-games" }),
         ],
       }),
@@ -397,7 +404,9 @@ test("Anonymous home stays contained across supported phone widths", async ({ pa
       body: JSON.stringify({
         ok: true,
         data: {
-          posts: [makePost({ body: `Long public note ${"unbroken".repeat(45)}` })],
+          posts: [
+            makePost({ body: `Long public note ${"unbroken".repeat(45)}` }),
+          ],
           activeRooms: [],
           peopleToWatch: [],
         },
@@ -414,18 +423,15 @@ test("Anonymous home stays contained across supported phone widths", async ({ pa
     if (width === 320) {
       await page.getByRole("button", { name: "Open navigation menu" }).click();
       const menu = page.getByTestId("anonymous-home-menu");
-      await expect(menu.getByRole("menuitem", { name: "Discover" })).toHaveAttribute(
-        "href",
-        "/discover",
-      );
-      await expect(menu.getByRole("menuitem", { name: "Rooms" })).toHaveAttribute(
-        "href",
-        "/rooms",
-      );
-      await expect(menu.getByRole("menuitem", { name: "Sign in" })).toHaveAttribute(
-        "href",
-        "/login",
-      );
+      await expect(
+        menu.getByRole("link", { name: "Discover" }),
+      ).toHaveAttribute("href", "/discover");
+      await expect(
+        menu.getByRole("link", { name: "Rooms" }),
+      ).toHaveAttribute("href", "/rooms");
+      await expect(
+        menu.getByRole("link", { name: "Sign in" }),
+      ).toHaveAttribute("href", "/login");
       await page.keyboard.press("Escape");
       await expect(menu).toHaveCount(0);
     }
@@ -437,15 +443,12 @@ test("Anonymous home stays contained across supported phone widths", async ({ pa
       "header a",
     ]);
 
-    for (const linkName of ["Explore rooms", "Create your profile"]) {
-      const box = await page
-        .getByTestId("anonymous-home")
-        .getByRole("link", { name: linkName })
-        .first()
-        .boundingBox();
-      expect(box).not.toBeNull();
-      expect(box!.height).toBeGreaterThanOrEqual(40);
-    }
+    const roomLinkBox = await page
+      .getByTestId("anonymous-home")
+      .getByRole("link", { name: "View all" })
+      .boundingBox();
+    expect(roomLinkBox).not.toBeNull();
+    expect(roomLinkBox!.height).toBeGreaterThanOrEqual(40);
   }
 });
 
@@ -533,7 +536,9 @@ test.describe("mobile Home media containment", () => {
       { width: 844, height: 390 },
     ]) {
       await page.setViewportSize(viewport);
-      const videos = page.locator('[data-testid^="post-attachments-"][data-testid$="-video"]');
+      const videos = page.locator(
+        '[data-testid^="post-attachments-"][data-testid$="-video"]',
+      );
 
       await expect(videos).toHaveCount(3);
       for (let index = 0; index < 3; index += 1) {
@@ -545,7 +550,9 @@ test.describe("mobile Home media containment", () => {
 
         expect(before).not.toBeNull();
         expect(after).not.toBeNull();
-        expect(Math.abs((after?.width ?? 0) - (before?.width ?? 0))).toBeLessThanOrEqual(1);
+        expect(
+          Math.abs((after?.width ?? 0) - (before?.width ?? 0)),
+        ).toBeLessThanOrEqual(1);
       }
 
       await expectViewportContained(page, [
@@ -577,7 +584,9 @@ test("Home refresh keeps the current feed visible until new posts arrive", async
         data: {
           posts: [
             makePost({
-              body: refreshRequested ? "Fresh refreshed post." : "First visible post.",
+              body: refreshRequested
+                ? "Fresh refreshed post."
+                : "First visible post.",
             }),
           ],
           personalized: false,
@@ -607,10 +616,14 @@ test("Home refresh keeps the current feed visible until new posts arrive", async
   await expect(page.getByTestId("feed-refresh-controls-updated")).toContainText(
     "Updated",
   );
-  await expectVisuallyClipped(page.getByTestId("feed-refresh-controls-updated"));
+  await expectVisuallyClipped(
+    page.getByTestId("feed-refresh-controls-updated"),
+  );
 });
 
-test("Home refresh failure preserves posts and offers retry", async ({ page }) => {
+test("Home refresh failure preserves posts and offers retry", async ({
+  page,
+}) => {
   await mockAuthenticatedApi(page);
   let refreshRequested = false;
 
@@ -683,24 +696,16 @@ test("Home keeps post context identity-first and renders real discovery paths", 
   await page.goto("/");
 
   await expect(page.getByText("Following", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("Liked by follows", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Liked by follows", { exact: true })).toHaveCount(
+    0,
+  );
   await expect(page.getByRole("link", { name: "Garden" })).toHaveAttribute(
     "href",
     "/rooms/garden",
   );
-  const main = page.locator("main");
-  await expect(main.getByRole("link", { name: "Search" })).toHaveAttribute(
-    "href",
-    "/search",
-  );
-  await expect(main.getByRole("link", { name: "Browse rooms" })).toHaveAttribute(
-    "href",
-    "/rooms",
-  );
-  await expect(main.getByRole("link", { name: "Discover" })).toHaveAttribute(
-    "href",
-    "/discover",
-  );
+  await expect(
+    page.getByLabel("Home feed").getByRole("link", { name: "Garden" }),
+  ).toBeVisible();
 });
 
 test("Discover loads the feed empty state without unbacked sections", async ({
@@ -720,31 +725,24 @@ test("Discover loads the feed empty state without unbacked sections", async ({
 
   await page.goto("/discover");
 
-  await expect(
-    page.getByRole("heading", { exact: true, name: "Discover" }),
-  ).toBeVisible();
+  await expect(page.getByTestId("discover-layout")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Rising" })).toBeVisible();
   await expect(page.getByText("No posts yet").first()).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Active rooms" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Active rooms" })).toHaveCount(
+    0,
+  );
   await expect(page.getByRole("heading", { name: "People" })).toHaveCount(0);
-  const main = page.locator("main");
-  await expect(main.getByRole("link", { name: "Search" })).toHaveAttribute(
-    "href",
-    "/search",
-  );
-  await expect(main.getByRole("link", { name: "Browse rooms" })).toHaveAttribute(
-    "href",
-    "/rooms",
-  );
+  await expect(page.getByTestId("discover-toolbar")).toBeVisible();
   await expect
     .poll(async () =>
       page
         .getByTestId("discover-layout")
-        .evaluate((node) =>
-          window
-            .getComputedStyle(node)
-            .gridTemplateColumns.split(" ")
-            .filter(Boolean).length,
+        .evaluate(
+          (node) =>
+            window
+              .getComputedStyle(node)
+              .gridTemplateColumns.split(" ")
+              .filter(Boolean).length,
         ),
     )
     .toBe(1);
@@ -771,10 +769,9 @@ test("Discover refresh updates the rising feed without losing existing posts", a
         data: {
           posts: [
             makePost({
-              body:
-                refreshRequested
-                  ? "Updated rising post."
-                  : "Original rising post.",
+              body: refreshRequested
+                ? "Updated rising post."
+                : "Original rising post.",
             }),
           ],
           activeRooms: [],
@@ -801,7 +798,9 @@ test("Discover refresh updates the rising feed without losing existing posts", a
   await expect(page.getByTestId("feed-refresh-controls-updated")).toContainText(
     "Updated",
   );
-  await expectVisuallyClipped(page.getByTestId("feed-refresh-controls-updated"));
+  await expectVisuallyClipped(
+    page.getByTestId("feed-refresh-controls-updated"),
+  );
 });
 
 test("global loading overlay skips non-protected grace after route data", async ({
@@ -829,7 +828,9 @@ test("global loading overlay skips non-protected grace after route data", async 
   await page.goto("/discover");
 
   await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Loading activity" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Loading activity" }),
+  ).toBeVisible();
 
   discoverReleased = true;
   pendingDiscoverResolvers.splice(0).forEach((resolve) => resolve());
@@ -968,14 +969,21 @@ test("Discover renders primary sections only when backed by data", async ({
 
   await page.goto("/discover");
 
-  await expect(page.getByRole("heading", { name: "Active rooms" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Active rooms" }),
+  ).toBeVisible();
   await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "General" })).toBeVisible();
-  await expect(page.getByText("@alex")).toBeVisible();
-  await expect(page.getByText("2 stars")).toBeVisible();
+  await expect(
+    page.getByTestId("discover-people-rail").getByText("@alex"),
+  ).toBeVisible();
+  await expect(page.getByText("Writes public posts.")).toBeVisible();
+  await expect(page.getByText("2 stars")).toHaveCount(0);
 });
 
-test("Discover puts compact context before the paginated feed on mobile", async ({ page }) => {
+test("Discover puts compact context before the paginated feed on mobile", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 390, height: 760 });
   await mockCommonApi(page);
   await page.route("**/api/feed/discover", (route) =>
@@ -994,8 +1002,12 @@ test("Discover puts compact context before the paginated feed on mobile", async 
 
   await page.goto("/discover");
 
-  const highlightsBox = await page.getByTestId("discover-mobile-highlights").boundingBox();
-  const risingBox = await page.getByTestId("discover-rising-feed").boundingBox();
+  const highlightsBox = await page
+    .getByTestId("discover-mobile-highlights")
+    .boundingBox();
+  const risingBox = await page
+    .getByTestId("discover-rising-feed")
+    .boundingBox();
 
   expect(highlightsBox).not.toBeNull();
   expect(risingBox).not.toBeNull();
@@ -1004,7 +1016,9 @@ test("Discover puts compact context before the paginated feed on mobile", async 
   await expect(page.getByTestId("discover-people-rail")).toBeHidden();
 
   const hasHorizontalOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    () =>
+      document.documentElement.scrollWidth >
+      document.documentElement.clientWidth + 1,
   );
   expect(hasHorizontalOverflow).toBe(false);
 });
@@ -1047,11 +1061,17 @@ test("Discover keeps scrolling by loading and deduplicating the next feed page",
   await page.goto("/discover");
 
   await expect(page.getByText("Loaded while scrolling.")).toBeVisible();
-  await expect(page.getByTestId("discover-rising-feed").getByTestId("post-card-open-thread")).toHaveCount(2);
+  await expect(
+    page
+      .getByTestId("discover-rising-feed")
+      .getByTestId("post-card-open-thread"),
+  ).toHaveCount(2);
   expect(cursors).toContain("12");
 });
 
-test("Home keeps scrolling by loading the next ranked feed page", async ({ page }) => {
+test("Home keeps scrolling by loading the next ranked feed page", async ({
+  page,
+}) => {
   await mockAuthenticatedApi(page);
   const cursors: Array<string | null> = [];
 
@@ -1082,11 +1102,15 @@ test("Home keeps scrolling by loading the next ranked feed page", async ({ page 
   await page.goto("/");
 
   await expect(page.getByText("More from Home.")).toBeVisible();
-  await expect(page.getByLabel("Home feed").getByTestId("post-card-open-thread")).toHaveCount(2);
+  await expect(
+    page.getByLabel("Home feed").getByTestId("post-card-open-thread"),
+  ).toHaveCount(2);
   expect(cursors).toContain("12");
 });
 
-test("Discover uses desktop side rails around the rising feed", async ({ page }) => {
+test("Discover uses desktop side rails around the rising feed", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   await mockCommonApi(page);
   await page.route("**/api/feed/discover", (route) =>
@@ -1141,7 +1165,9 @@ test("Discover uses desktop side rails around the rising feed", async ({ page })
   await expect(peopleRail.getByText("@person5")).toBeVisible();
 
   const hasHorizontalOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    () =>
+      document.documentElement.scrollWidth >
+      document.documentElement.clientWidth + 1,
   );
   expect(hasHorizontalOverflow).toBe(false);
 });
@@ -1188,22 +1214,24 @@ test("PostCard reblog action updates count and state", async ({ page }) => {
 
   await page.goto("/");
 
-  await expect(page.getByRole("button", { name: /Reblog this post/ })).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: /Reblog this post/ }),
+  ).toBeEnabled();
   await page.getByRole("button", { name: /Reblog this post/ }).click();
-  await expect(page.getByRole("button", { name: /Undo reblog/ })).toHaveAttribute(
-    "aria-pressed",
-    "true",
+  await expect(
+    page.getByRole("button", { name: /Undo reblog/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /Undo reblog/ })).toContainText(
+    "3",
   );
-  await expect(page.getByRole("button", { name: /Undo reblog/ })).toContainText("3");
 
   await page.getByRole("button", { name: /Undo reblog/ }).click();
-  await expect(page.getByRole("button", { name: /Reblog this post/ })).toHaveAttribute(
-    "aria-pressed",
-    "false",
-  );
-  await expect(page.getByRole("button", { name: /Reblog this post/ })).toContainText(
-    "2",
-  );
+  await expect(
+    page.getByRole("button", { name: /Reblog this post/ }),
+  ).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    page.getByRole("button", { name: /Reblog this post/ }),
+  ).toContainText("2");
 });
 
 test("PostCard share modal copies, saves, and sends typed post attachments", async ({
@@ -1237,6 +1265,14 @@ test("PostCard share modal copies, saves, and sends typed post attachments", asy
     aura: "frost",
     avatarUrl: null,
   };
+  const secondMoot = {
+    id: 8,
+    handle: "skyfriend",
+    displayName: "Sky Friend",
+    initials: "SF",
+    aura: "glinda",
+    avatarUrl: null,
+  };
   let sharePayload: Record<string, unknown> | undefined;
   let cardCacheUploads = 0;
 
@@ -1252,43 +1288,53 @@ test("PostCard share modal copies, saves, and sends typed post attachments", asy
   await page.route("**/api/chat/moots", (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [moot] }),
+      body: JSON.stringify({ ok: true, data: [moot, secondMoot] }),
     }),
   );
-  await page.route(`**/api/posts/${publicId}/shares/messages`, async (route) => {
-    sharePayload = route.request().postDataJSON() as Record<string, unknown>;
-    await route.fulfill({
-      status: 201,
-      contentType: "application/json",
-      body: JSON.stringify({
-        ok: true,
-        data: {
-          post: {
-            id: 42,
-            publicId,
-            canonicalPath: `/@alex/posts/${publicId}`,
-            canonicalUrl: `https://thia.lol/@alex/posts/${publicId}`,
-            bodySnippet: "A public post.",
-            createdAt: "2026-06-10 10:00:00",
-            mediaUrl: null,
-            author: post.author,
-            room: null,
-          },
-          results: [
-            {
-              recipientUserId: 7,
-              recipient: moot,
-              status: "sent",
-              conversationId: 31,
-              messageId: 501,
+  await page.route(
+    `**/api/posts/${publicId}/shares/messages`,
+    async (route) => {
+      sharePayload = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            post: {
+              id: 42,
+              publicId,
+              canonicalPath: `/@alex/posts/${publicId}`,
+              canonicalUrl: `https://thia.lol/@alex/posts/${publicId}`,
+              bodySnippet: "A public post.",
+              createdAt: "2026-06-10 10:00:00",
+              mediaUrl: null,
+              author: post.author,
+              room: null,
             },
-          ],
-          sentCount: 1,
-          failedCount: 0,
-        },
-      }),
-    });
-  });
+            results: [
+              {
+                recipientUserId: 7,
+                recipient: moot,
+                status: "sent",
+                conversationId: 31,
+                messageId: 501,
+              },
+              {
+                recipientUserId: 8,
+                recipient: secondMoot,
+                status: "sent",
+                conversationId: 32,
+                messageId: 502,
+              },
+            ],
+            sentCount: 2,
+            failedCount: 0,
+          },
+        }),
+      });
+    },
+  );
   await page.route(`**/share-render/post/${publicId}`, (route) =>
     route.fulfill({
       contentType: "text/html",
@@ -1309,21 +1355,24 @@ test("PostCard share modal copies, saves, and sends typed post attachments", asy
         </html>`,
     }),
   );
-  await page.route(`**/api/posts/${publicId}/share-card-cache`, async (route) => {
-    cardCacheUploads += 1;
-    await route.fulfill({
-      status: 201,
-      contentType: "application/json",
-      body: JSON.stringify({
-        ok: true,
-        data: {
-          url: `/uploads/share-cards/posts/${publicId}.png`,
-          width: 2400,
-          height: 1260,
-        },
-      }),
-    });
-  });
+  await page.route(
+    `**/api/posts/${publicId}/share-card-cache`,
+    async (route) => {
+      cardCacheUploads += 1;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            url: `/uploads/share-cards/posts/${publicId}.png`,
+            width: 2400,
+            height: 1260,
+          },
+        }),
+      });
+    },
+  );
 
   await page.goto("/");
   await page.getByRole("button", { name: "Share post" }).first().click();
@@ -1331,12 +1380,24 @@ test("PostCard share modal copies, saves, and sends typed post attachments", asy
   await expect(page).toHaveURL(/\/$/);
   const modal = page.getByTestId("post-share-modal");
   await expect(modal).toBeVisible();
+  await expect(modal.getByText("Alex", { exact: true })).toBeVisible();
+  await expect(modal.getByText("@alex", { exact: true })).toBeVisible();
+  await expect(
+    modal.getByText("A public post.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    modal.getByRole("link", { name: `/@alex/posts/${publicId}` }),
+  ).toHaveCount(0);
 
   await modal.getByTestId("post-share-copy-link").click();
-  await expect(modal.getByTestId("post-share-copy-link")).toContainText("Copied");
+  await expect(modal.getByTestId("post-share-copy-link")).toContainText(
+    "Copied",
+  );
   await expect
     .poll(() =>
-      page.evaluate(() => (window as unknown as { __copiedText?: string }).__copiedText),
+      page.evaluate(
+        () => (window as unknown as { __copiedText?: string }).__copiedText,
+      ),
     )
     .toBe(
       `https://thia.lol/@alex/posts/${publicId}?utm_source=thia.lol&utm_medium=share&utm_campaign=post-share&thia_share=post%3A${publicId}`,
@@ -1348,23 +1409,141 @@ test("PostCard share modal copies, saves, and sends typed post attachments", asy
   expect(download.suggestedFilename()).toBe(`thia-post-${publicId}.png`);
   await expect.poll(() => cardCacheUploads).toBeGreaterThan(0);
 
-  await expect(modal.getByTestId("post-share-moot-list")).toContainText("Moot Pal");
+  await expect(modal.getByTestId("post-share-moot-list")).toContainText(
+    "Moot Pal",
+  );
   await modal.getByTestId("post-share-moot-7").click();
-  await modal.getByTestId("post-share-note").fill("thought you would like this");
+  await modal.getByTestId("post-share-moot-8").click();
+  await expect(modal.getByText("2/10 selected", { exact: true })).toBeVisible();
+  await expect(modal.getByTestId("post-share-note")).not.toHaveAttribute(
+    "placeholder",
+    "Add a note",
+  );
+  await modal
+    .getByTestId("post-share-note")
+    .fill("thought you would like this");
   await modal.getByTestId("post-share-send-moots").click();
 
-  await expect(modal.getByText("Sent to 1 moot.")).toBeVisible();
-  await expect(modal.getByRole("link", { name: "Open chat" })).toHaveAttribute(
-    "href",
-    "/chat?conversation=31",
-  );
+  await expect(modal.getByText("Sent to 2 moots.")).toBeVisible();
+  await expect(
+    modal.getByRole("link", { name: "Open chat with Moot Pal (@mootpal)" }),
+  ).toHaveAttribute("href", "/chat?conversation=31");
+  await expect(
+    modal.getByRole("link", { name: "Open chat with Sky Friend (@skyfriend)" }),
+  ).toHaveAttribute("href", "/chat?conversation=32");
   expect(sharePayload).toMatchObject({
-    recipientUserIds: [7],
+    recipientUserIds: [7, 8],
     note: "thought you would like this",
   });
 });
 
-test("post permalink route loads canonical post and replies", async ({ page }) => {
+test("post share hides recipient controls until a selectable moot list exists", async ({
+  page,
+}) => {
+  await mockAuthenticatedApi(page);
+  const post = makePost({
+    publicId: "pempty123456",
+    canonicalPath: "/@alex/posts/pempty123456",
+    canonicalUrl: "https://thia.lol/@alex/posts/pempty123456",
+  });
+  let releaseMoots: (() => void) | undefined;
+  const mootsResponse = new Promise<void>((resolve) => {
+    releaseMoots = resolve;
+  });
+
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: [post], personalized: true },
+      }),
+    }),
+  );
+  await page.route("**/api/chat/moots", async (route) => {
+    await mootsResponse;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Share post" }).first().click();
+
+  const modal = page.getByTestId("post-share-modal");
+  await expect(
+    modal.getByRole("heading", { name: "Loading moots" }),
+  ).toBeVisible();
+  await expect(modal.getByTestId("post-share-note")).toHaveCount(0);
+  await expect(modal.getByTestId("post-share-send-moots")).toHaveCount(0);
+  await expect(modal.getByText(/selected$/)).toHaveCount(0);
+
+  releaseMoots?.();
+  await expect(
+    modal.getByRole("heading", { name: "No moots yet" }),
+  ).toBeVisible();
+  await expect(modal.getByTestId("post-share-moot-search")).toHaveCount(0);
+  await expect(modal.getByTestId("post-share-note")).toHaveCount(0);
+  await expect(modal.getByTestId("post-share-send-moots")).toHaveCount(0);
+  await expect(modal.getByText(/selected$/)).toHaveCount(0);
+
+  await modal.getByRole("button", { name: "Close share dialog" }).click();
+  await page.unroute("**/api/chat/moots");
+  await page.route("**/api/chat/moots", (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Moots are unavailable." }),
+    }),
+  );
+  await page.getByRole("button", { name: "Share post" }).first().click();
+  await expect(
+    modal.getByRole("heading", { name: "Moots could not load" }),
+  ).toBeVisible();
+  await expect(modal.getByText("Moots are unavailable.")).toBeVisible();
+  await expect(modal.getByTestId("post-share-moot-search")).toHaveCount(0);
+  await expect(modal.getByTestId("post-share-note")).toHaveCount(0);
+  await expect(modal.getByTestId("post-share-send-moots")).toHaveCount(0);
+  await expect(modal.getByText(/selected$/)).toHaveCount(0);
+});
+
+test("anonymous post share keeps public actions without recipient controls", async ({
+  page,
+}) => {
+  await mockCommonApi(page);
+  await page.route("**/api/feed/discover**", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [makePost()],
+          activeRooms: [],
+          peopleToWatch: [],
+        },
+      }),
+    }),
+  );
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Share post" }).first().click();
+
+  const modal = page.getByTestId("post-share-modal");
+  await expect(
+    modal.getByRole("heading", { name: "Log in to send" }),
+  ).toBeVisible();
+  await expect(modal.getByTestId("post-share-copy-link")).toBeVisible();
+  await expect(modal.getByTestId("post-share-save-image")).toBeVisible();
+  await expect(modal.getByTestId("post-share-moot-search")).toHaveCount(0);
+  await expect(modal.getByTestId("post-share-note")).toHaveCount(0);
+  await expect(modal.getByTestId("post-share-send-moots")).toHaveCount(0);
+  await expect(modal.getByText(/selected$/)).toHaveCount(0);
+});
+
+test("post permalink route loads canonical post and replies", async ({
+  page,
+}) => {
   await mockCommonApi(page);
   const publicId = "pabc123def456";
   await page.route(`**/api/posts/${publicId}`, (route) =>
@@ -1507,8 +1686,14 @@ test("post permalink route shows unavailable state", async ({ page }) => {
 
   await page.goto("/@alex/posts/pnotfound1234");
 
-  await expect(page.getByRole("heading", { name: "Post not available" })).toBeVisible();
-  await expect(page.getByText("Post not found.")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Post not available" }),
+  ).toBeVisible();
+  await expect(page.getByText("Post not found.")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Back to Discover" })).toHaveAttribute(
+    "href",
+    "/discover",
+  );
 });
 
 test("PostCard author avatar, name, and handle navigate to profile", async ({
@@ -1529,14 +1714,12 @@ test("PostCard author avatar, name, and handle navigate to profile", async ({
   await page.goto("/");
 
   const post = page.locator("article").first();
-  await expect(post.getByRole("link", { name: "Alex's profile" })).toHaveAttribute(
-    "href",
-    "/@alex",
-  );
-  await expect(post.getByRole("link", { name: "Alex", exact: true })).toHaveAttribute(
-    "href",
-    "/@alex",
-  );
+  await expect(
+    post.getByRole("link", { name: "Alex's profile" }),
+  ).toHaveAttribute("href", "/@alex");
+  await expect(
+    post.getByRole("link", { name: "Alex", exact: true }),
+  ).toHaveAttribute("href", "/@alex");
   await expect(post.getByRole("link", { name: "@alex" })).toHaveAttribute(
     "href",
     "/@alex",
@@ -1547,7 +1730,9 @@ test("PostCard author avatar, name, and handle navigate to profile", async ({
   await expect(page.getByRole("heading", { name: "Alex" })).toBeVisible();
 });
 
-test("roomless posts link their destination to the author profile", async ({ page }) => {
+test("roomless posts do not repeat their profile destination", async ({
+  page,
+}) => {
   await mockAuthenticatedApi(page);
   await mockProfileRoutes(page, "alex");
   await page.route("**/api/feed/home", (route) =>
@@ -1563,12 +1748,8 @@ test("roomless posts link their destination to the author profile", async ({ pag
   await page.goto("/");
 
   const post = page.getByTestId("post-card-open-thread").first();
-  const destination = post.getByRole("link", { name: "Profile feed" });
-  await expect(destination).toHaveAttribute("href", "/@alex");
+  await expect(post.getByRole("link", { name: "Profile feed" })).toHaveCount(0);
   await expect(page.locator('a[href="/rooms/profile"]')).toHaveCount(0);
-
-  await destination.click();
-  await expect(page).toHaveURL(/\/@alex$/);
 });
 
 test("feed and thread keep provider embeds while generic links stay inline", async ({
@@ -1612,8 +1793,16 @@ test("feed and thread keep provider embeds while generic links stay inline", asy
               body,
               bodyEntities: [
                 richMentionEntity(body, "@thia", thia),
-                richLinkEntity(body, "https://example.com/notes", richWebsiteCard("https://example.com/notes", "Example notes")),
-                richLinkEntity(body, "https://www.youtube.com/watch?v=abc123", richYouTubeCard("https://www.youtube.com/watch?v=abc123")),
+                richLinkEntity(
+                  body,
+                  "https://example.com/notes",
+                  richWebsiteCard("https://example.com/notes", "Example notes"),
+                ),
+                richLinkEntity(
+                  body,
+                  "https://www.youtube.com/watch?v=abc123",
+                  richYouTubeCard("https://www.youtube.com/watch?v=abc123"),
+                ),
               ],
             }),
           ],
@@ -1634,7 +1823,11 @@ test("feed and thread keep provider embeds while generic links stay inline", asy
             body: replyBody,
             bodyEntities: [
               richMentionEntity(replyBody, "@thia", thia),
-              richLinkEntity(replyBody, "https://example.com/reply", richWebsiteCard("https://example.com/reply", "Reply card")),
+              richLinkEntity(
+                replyBody,
+                "https://example.com/reply",
+                richWebsiteCard("https://example.com/reply", "Reply card"),
+              ),
             ],
           }),
         ],
@@ -1650,8 +1843,16 @@ test("feed and thread keep provider embeds while generic links stay inline", asy
           body,
           bodyEntities: [
             richMentionEntity(body, "@thia", thia),
-            richLinkEntity(body, "https://example.com/notes", richWebsiteCard("https://example.com/notes", "Example notes")),
-            richLinkEntity(body, "https://www.youtube.com/watch?v=abc123", richYouTubeCard("https://www.youtube.com/watch?v=abc123")),
+            richLinkEntity(
+              body,
+              "https://example.com/notes",
+              richWebsiteCard("https://example.com/notes", "Example notes"),
+            ),
+            richLinkEntity(
+              body,
+              "https://www.youtube.com/watch?v=abc123",
+              richYouTubeCard("https://www.youtube.com/watch?v=abc123"),
+            ),
           ],
           commentCount: 1,
         }),
@@ -1666,10 +1867,9 @@ test("feed and thread keep provider embeds while generic links stay inline", asy
     "href",
     "/@thia",
   );
-  await expect(postCard.getByTestId("rich-inline-link").first()).toHaveAttribute(
-    "href",
-    "https://example.com/notes",
-  );
+  await expect(
+    postCard.getByTestId("rich-inline-link").first(),
+  ).toHaveAttribute("href", "https://example.com/notes");
   await expect(postCard.getByTestId("rich-inline-link")).toHaveCount(2);
   await expect(postCard.getByTestId("rich-inline-link").nth(1)).toHaveAttribute(
     "href",
@@ -1681,13 +1881,14 @@ test("feed and thread keep provider embeds while generic links stay inline", asy
 
   await postCard.getByTestId("rich-mention-link").click();
   await expect(page).toHaveURL(/\/@thia$/);
-  await expect(page.getByTestId("profile-bio").getByTestId("rich-mention-link")).toHaveAttribute(
-    "href",
-    "/@alex",
-  );
+  await expect(
+    page.getByTestId("profile-bio").getByTestId("rich-mention-link"),
+  ).toHaveAttribute("href", "/@alex");
 
   await page.goto("/");
-  await postCard.getByRole("link", { name: "Open thread by Alex", exact: true }).focus();
+  await postCard
+    .getByRole("link", { name: "Open thread by Alex", exact: true })
+    .focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/@alex\/posts\/42$/);
   const thread = page.getByTestId("thread-view");
@@ -1703,15 +1904,12 @@ test("feed and thread keep provider embeds while generic links stay inline", asy
     "href",
     "/@thia",
   );
-  await expect(
-    reply.getByTestId("rich-inline-link"),
-  ).toHaveAttribute("href", "https://example.com/reply");
-  await expect(
-    root.getByTestId("rich-link-embed-youtube"),
-  ).toBeVisible();
-  await expect(
-    reply.getByTestId("rich-link-preview"),
-  ).toHaveCount(0);
+  await expect(reply.getByTestId("rich-inline-link")).toHaveAttribute(
+    "href",
+    "https://example.com/reply",
+  );
+  await expect(root.getByTestId("rich-link-embed-youtube")).toBeVisible();
+  await expect(reply.getByTestId("rich-link-preview")).toHaveCount(0);
 });
 
 test("fallback embeds persist for YouTube, Spotify, Apple Music, and Twitch", async ({
@@ -1720,10 +1918,11 @@ test("fallback embeds persist for YouTube, Spotify, Apple Music, and Twitch", as
   await mockAuthenticatedApi(page);
   await page.route(
     /^https:\/\/(?:www\.youtube-nocookie\.com|open\.spotify\.com|embed\.music\.apple\.com|player\.twitch\.tv)\//,
-    (route) => route.fulfill({
-      contentType: "text/html",
-      body: "<!doctype html><html><body>Provider embed stub</body></html>",
-    }),
+    (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: "<!doctype html><html><body>Provider embed stub</body></html>",
+      }),
   );
 
   const body = [
@@ -1770,24 +1969,28 @@ test("fallback embeds persist for YouTube, Spotify, Apple Music, and Twitch", as
   await page.route("**/api/posts/42", (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: makePost({ body, commentCount: 1 }) }),
+      body: JSON.stringify({
+        ok: true,
+        data: makePost({ body, commentCount: 1 }),
+      }),
     }),
   );
 
   await page.goto("/");
 
   const postCard = page.getByTestId("post-card-open-thread").first();
-  await expect(postCard.getByTestId("rich-inline-link").first()).toHaveAttribute(
-    "href",
-    "https://youtu.be/abc123",
-  );
+  await expect(
+    postCard.getByTestId("rich-inline-link").first(),
+  ).toHaveAttribute("href", "https://youtu.be/abc123");
   await expect(postCard.getByTestId("rich-inline-link")).toHaveCount(4);
   await expect(postCard.getByTestId("rich-inline-link").nth(3)).toHaveAttribute(
     "href",
     "https://example.com/story",
   );
   await expect(postCard.getByTestId("rich-link-preview")).toHaveCount(3);
-  await expect(postCard.locator('a[data-testid="rich-link-preview"]')).toHaveCount(0);
+  await expect(
+    postCard.locator('a[data-testid="rich-link-preview"]'),
+  ).toHaveCount(0);
   await expect(postCard.getByTestId("rich-link-embed-youtube")).toHaveAttribute(
     "src",
     "https://www.youtube-nocookie.com/embed/abc123",
@@ -1796,26 +1999,30 @@ test("fallback embeds persist for YouTube, Spotify, Apple Music, and Twitch", as
     "src",
     "https://open.spotify.com/embed/track/spotify123?theme=0",
   );
-  await expect(postCard.getByTestId("rich-link-embed-apple_music")).toHaveAttribute(
+  await expect(
+    postCard.getByTestId("rich-link-embed-apple_music"),
+  ).toHaveAttribute(
     "src",
     "https://embed.music.apple.com/us/album/example/123456789?i=987654321",
   );
 
-  await postCard.getByRole("link", { name: "Open thread by Alex", exact: true }).focus();
+  await postCard
+    .getByRole("link", { name: "Open thread by Alex", exact: true })
+    .focus();
   await page.keyboard.press("Enter");
   const thread = page.getByTestId("thread-view");
   await expect(thread).toBeVisible();
   const root = thread.locator('[data-variant="focus"]');
   const reply = thread.locator('[data-variant="reply"]').first();
-  await expect(
-    root.getByTestId("rich-inline-link"),
-  ).toHaveCount(4);
-  await expect(
-    reply.getByTestId("rich-inline-link"),
-  ).toHaveAttribute("href", "https://www.twitch.tv/thiabun");
-  await expect(
-    reply.getByTestId("rich-link-embed-twitch"),
-  ).toHaveAttribute("src", /https:\/\/player\.twitch\.tv\/.*channel=thiabun.*parent=/);
+  await expect(root.getByTestId("rich-inline-link")).toHaveCount(4);
+  await expect(reply.getByTestId("rich-inline-link")).toHaveAttribute(
+    "href",
+    "https://www.twitch.tv/thiabun",
+  );
+  await expect(reply.getByTestId("rich-link-embed-twitch")).toHaveAttribute(
+    "src",
+    /https:\/\/player\.twitch\.tv\/.*channel=thiabun.*parent=/,
+  );
   await expect(thread.getByTestId("rich-link-preview")).toHaveCount(4);
 });
 
@@ -1861,10 +2068,16 @@ test("Profile Feed renders API-backed reblogs", async ({ page }) => {
     }),
   );
   await page.route("**/api/profiles/alex/posts", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data: [] }) }),
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    }),
   );
   await page.route("**/api/profiles/alex/replies", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data: [] }) }),
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    }),
   );
   await page.route("**/api/profiles/alex/reblogs", (route) =>
     route.fulfill({
@@ -1904,13 +2117,22 @@ test("Profile Feed renders API-backed reblogs", async ({ page }) => {
     }),
   );
   await page.route("**/api/profiles/alex/rooms", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data: [] }) }),
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    }),
   );
   await page.route("**/api/profiles/alex/followers", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data: [] }) }),
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    }),
   );
   await page.route("**/api/profiles/alex/following", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data: [] }) }),
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    }),
   );
 
   await page.goto("/@alex");
@@ -2029,11 +2251,17 @@ test("feed post and reply actions use the canonical thread while controls stay i
   expect(postBox!.width).toBeLessThanOrEqual(610);
   expect(bodyBox!.width).toBeGreaterThan(postBox!.width * 0.8);
 
-  await page.getByRole("button", { name: /Like this post/ }).first().click();
+  await page
+    .getByRole("button", { name: /Like this post/ })
+    .first()
+    .click();
   await expect(page).toHaveURL(/\/$/);
   expect(likeCalled).toBe(true);
 
-  await page.getByRole("button", { name: /Reblog this post/ }).first().click();
+  await page
+    .getByRole("button", { name: /Reblog this post/ })
+    .first()
+    .click();
   await expect(page).toHaveURL(/\/$/);
   expect(reblogCalled).toBe(true);
 
@@ -2047,13 +2275,18 @@ test("feed post and reply actions use the canonical thread while controls stay i
 
   await page.goBack();
   await expect(page).toHaveURL(/\/$/);
-  await page.getByRole("button", { name: /Open replies/ }).first().click();
+  await page
+    .getByRole("button", { name: /Open replies/ })
+    .first()
+    .click();
   await expect(page).toHaveURL(/\/@alex\/posts\/42$/);
   await expect(page.getByTestId("reply-composer")).toBeVisible();
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
 });
 
-test("focused post video autoplays muted, pauses offscreen, and keeps controls isolated", async ({ page }) => {
+test("focused post video autoplays muted, pauses offscreen, and keeps controls isolated", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.addInitScript(() => {
     const playbackCalls = { pause: 0, play: 0 };
@@ -2128,9 +2361,10 @@ test("focused post video autoplays muted, pauses offscreen, and keeps controls i
   await expect(video).toHaveJSProperty("muted", true);
   await expect
     .poll(() =>
-      page.evaluate(() =>
-        (window as unknown as { __thiaVideoPlaybackCalls: { play: number } })
-          .__thiaVideoPlaybackCalls.play,
+      page.evaluate(
+        () =>
+          (window as unknown as { __thiaVideoPlaybackCalls: { play: number } })
+            .__thiaVideoPlaybackCalls.play,
       ),
     )
     .toBeGreaterThan(0);
@@ -2147,21 +2381,26 @@ test("focused post video autoplays muted, pauses offscreen, and keeps controls i
   expect(repliesRequested).toBe(false);
 
   await videoFrame.evaluate((element) => {
-    element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    element.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true }),
+    );
   });
   await expect(page).toHaveURL(/\/$/);
   expect(repliesRequested).toBe(false);
 
-  await post.getByTestId("post-body-open-thread").click({ position: { x: 24, y: 24 } });
+  await post
+    .getByTestId("post-body-open-thread")
+    .click({ position: { x: 24, y: 24 } });
   await expect(page).toHaveURL(/\/@alex\/posts\/42$/);
   await expect(page.getByTestId("thread-view")).toBeVisible();
 
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await expect
     .poll(() =>
-      page.evaluate(() =>
-        (window as unknown as { __thiaVideoPlaybackCalls: { pause: number } })
-          .__thiaVideoPlaybackCalls.pause,
+      page.evaluate(
+        () =>
+          (window as unknown as { __thiaVideoPlaybackCalls: { pause: number } })
+            .__thiaVideoPlaybackCalls.pause,
       ),
     )
     .toBeGreaterThan(0);
@@ -2219,7 +2458,9 @@ test("post body and media hover stay visually flat in Light and Dark", async ({
   }
 });
 
-test("post card open target supports keyboard navigation to its canonical thread", async ({ page }) => {
+test("post card open target supports keyboard navigation to its canonical thread", async ({
+  page,
+}) => {
   await mockAuthenticatedApi(page);
 
   await page.route("**/api/feed/home", (route) =>
@@ -2379,7 +2620,9 @@ test("post report and delete controls stay isolated from body open", async ({
     .getByRole("button", { name: "Report post" })
     .click();
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Report post" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Report post" }),
+  ).toBeVisible();
 });
 
 test("post permalink shows a trash delete action for the author", async ({
@@ -2434,7 +2677,9 @@ test("post permalink shows a trash delete action for the author", async ({
   expect(deleted).toBe(true);
 });
 
-test("continuous thread keeps root and reply identities independently navigable", async ({ page }) => {
+test("continuous thread keeps root and reply identities independently navigable", async ({
+  page,
+}) => {
   await mockAuthenticatedApi(page);
 
   await page.route("**/api/feed/home", (route) =>
@@ -2508,14 +2753,12 @@ test("continuous thread keeps root and reply identities independently navigable"
   await expect(page).toHaveURL(/\/@alex\/posts\/42$/);
   const thread = page.getByTestId("thread-view");
   await expect(thread).toBeVisible();
-  await expect(thread.getByRole("link", { name: "Alex's profile" })).toHaveAttribute(
-    "href",
-    "/@alex",
-  );
-  await expect(thread.getByRole("link", { name: "Mira's profile" })).toHaveAttribute(
-    "href",
-    "/@mira",
-  );
+  await expect(
+    thread.getByRole("link", { name: "Alex's profile" }),
+  ).toHaveAttribute("href", "/@alex");
+  await expect(
+    thread.getByRole("link", { name: "Mira's profile" }),
+  ).toHaveAttribute("href", "/@mira");
   await expect(thread.getByRole("link", { name: "General" })).toHaveAttribute(
     "href",
     "/rooms/general",
@@ -2526,7 +2769,10 @@ test("continuous thread keeps root and reply identities independently navigable"
   await replyItem.hover();
   await thread.getByRole("link", { name: "Mira's profile" }).hover();
   await thread.getByRole("link", { name: "General" }).hover();
-  await thread.getByRole("button", { name: /Open replies/ }).first().hover();
+  await thread
+    .getByRole("button", { name: /Open replies/ })
+    .first()
+    .hover();
   await page.waitForTimeout(100);
 
   await expect(rootPost).toBeVisible();
@@ -2554,7 +2800,10 @@ test("thread inline composer shares progressive formatting and media controls", 
   );
   await page.route("**/api/posts/42/replies", async (route) => {
     if (route.request().method() === "POST") {
-      replyPayload = (await route.request().postDataJSON()) as Record<string, unknown>;
+      replyPayload = (await route.request().postDataJSON()) as Record<
+        string,
+        unknown
+      >;
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
@@ -2592,24 +2841,26 @@ test("thread inline composer shares progressive formatting and media controls", 
     }),
   );
   for (const provider of ["spotify", "youtube"] as const) {
-    await page.route(`**/api/me/integrations/${provider}/suggestions`, (route) =>
-      route.fulfill({
-        contentType: "application/json",
-        body: JSON.stringify({
-          ok: true,
-          data: {
-            provider,
-            status: {
+    await page.route(
+      `**/api/me/integrations/${provider}/suggestions`,
+      (route) =>
+        route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            data: {
               provider,
-              configured: true,
-              oauthEnabled: true,
-              metadataEnabled: true,
+              status: {
+                provider,
+                configured: true,
+                oauthEnabled: true,
+                metadataEnabled: true,
+              },
+              account: null,
+              items: [],
             },
-            account: null,
-            items: [],
-          },
+          }),
         }),
-      }),
     );
   }
   await page.route("**/api/uploads/audio", async (route) => {
@@ -2639,79 +2890,110 @@ test("thread inline composer shares progressive formatting and media controls", 
   await expect(thread).toBeVisible();
   const composer = thread.getByTestId("reply-composer");
   await expect(composer).toBeVisible();
-  await expect(composer.getByRole("button", { name: "Add music" })).toBeVisible();
-  await expect(composer.getByRole("button", { name: "Reply", exact: true })).toBeDisabled();
-  await expect(composer.getByTestId("reply-composer-markdown-toolbar")).toHaveCount(0);
-  await expect(composer.getByTestId("reply-composer-markdown-preview")).toHaveCount(0);
+  await expect(
+    composer.getByRole("button", { name: "Add music" }),
+  ).toBeVisible();
+  await expect(
+    composer.getByRole("button", { name: "Reply", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    composer.getByTestId("reply-composer-markdown-toolbar"),
+  ).toHaveCount(0);
+  await expect(
+    composer.getByTestId("reply-composer-markdown-preview"),
+  ).toHaveCount(0);
 
   await composer.getByRole("button", { name: "Format" }).click();
-  await expect(composer.getByTestId("reply-composer-markdown-toolbar")).toBeVisible();
+  await expect(
+    composer.getByTestId("reply-composer-markdown-toolbar"),
+  ).toBeVisible();
   await composer.getByRole("button", { name: "Add music" }).click();
   await composer
     .getByTestId("post-music-audio-input")
     .setInputFiles(sampleMp3File("reply-track.mp3"));
   await expect.poll(() => audioUploadPurpose).toBe("post_media");
-  await expect(composer.getByTestId("reply-composer-attachments")).toContainText("MP3");
+  await expect(
+    composer.getByTestId("reply-composer-attachments"),
+  ).toContainText("MP3");
 
   const replyBody = composer.getByRole("textbox", { name: "Reply" });
   await replyBody.fill("A **compact** reply.");
   await expect(replyBody).not.toHaveCSS("color", "rgba(0, 0, 0, 0)");
   await composer.getByRole("button", { name: "Preview" }).click();
-  await expect(composer.getByTestId("reply-composer-markdown-preview")).not.toHaveCSS(
-    "position",
-    "absolute",
-  );
   await expect(
-    composer.getByTestId("reply-composer-markdown-preview").locator("strong").filter({
-      hasText: "compact",
-    }),
+    composer.getByTestId("reply-composer-markdown-preview"),
+  ).not.toHaveCSS("position", "absolute");
+  await expect(
+    composer
+      .getByTestId("reply-composer-markdown-preview")
+      .locator("strong")
+      .filter({
+        hasText: "compact",
+      }),
   ).toBeVisible();
   await composer.getByRole("button", { name: "Reply", exact: true }).click();
 
-  await expect.poll(() => replyPayload).toMatchObject({
-    body: "A **compact** reply.",
-    attachments: [
-      {
-        kind: "audio",
-        mime: "audio/mpeg",
-        url: "/uploads/media/2026/06/post_media-track.mp3",
-      },
-    ],
-  });
+  await expect
+    .poll(() => replyPayload)
+    .toMatchObject({
+      body: "A **compact** reply.",
+      attachments: [
+        {
+          kind: "audio",
+          mime: "audio/mpeg",
+          url: "/uploads/media/2026/06/post_media-track.mp3",
+        },
+      ],
+    });
   await expect(
-    thread.locator('[data-variant="reply"]').filter({ hasText: "A compact reply." }),
+    thread
+      .locator('[data-variant="reply"]')
+      .filter({ hasText: "A compact reply." }),
   ).toBeVisible();
   await expect(
     thread
       .locator('[data-variant="focus"]')
       .getByRole("button", { name: "Open replies and reply. 1 reply." }),
   ).toBeVisible();
-  await expect(page.locator("header").getByText("1 reply", { exact: true })).toBeVisible();
+  await expect(
+    page.locator("header").getByText("1 reply", { exact: true }),
+  ).toHaveCount(0);
   const createdReply = thread
     .locator('[data-variant="reply"]')
     .filter({ hasText: "A compact reply." });
-  const musicPlayer = createdReply.getByTestId("post-attachments-0-music-player");
-  await expect(musicPlayer).toContainText(
-    "MP3 attachment 1",
+  const musicPlayer = createdReply.getByTestId(
+    "post-attachments-0-music-player",
   );
-  await expect(musicPlayer).toHaveAttribute("data-post-music-layout", "compact");
-  await expect(musicPlayer.getByTestId("post-attachments-0-music-play-button")).toBeVisible();
-  await expect(musicPlayer.getByTestId("post-attachments-0-music-progress-time")).toHaveText(
-    "Ready",
+  await expect(musicPlayer).toContainText("MP3 attachment 1");
+  await expect(musicPlayer).toHaveAttribute(
+    "data-post-music-layout",
+    "compact",
   );
-  await expect(musicPlayer.getByTestId("post-attachments-0-music-progress-bar")).toHaveAttribute(
-    "aria-valuenow",
-    "0",
-  );
+  await expect(
+    musicPlayer.getByTestId("post-attachments-0-music-play-button"),
+  ).toBeVisible();
+  await expect(
+    musicPlayer.getByTestId("post-attachments-0-music-progress-time"),
+  ).toHaveText("Ready");
+  await expect(
+    musicPlayer.getByTestId("post-attachments-0-music-progress-bar"),
+  ).toHaveAttribute("aria-valuenow", "0");
   await expect(musicPlayer.locator("audio[controls]")).toHaveCount(0);
-  await expect(createdReply.getByTestId("post-attachments-0-audio")).toBeAttached();
-  await expect(createdReply.getByTestId("post-attachments-0-audio")).not.toBeVisible();
+  await expect(
+    createdReply.getByTestId("post-attachments-0-audio"),
+  ).toBeAttached();
+  await expect(
+    createdReply.getByTestId("post-attachments-0-audio"),
+  ).not.toBeVisible();
 });
 
 test("mobile thread keeps nested context focused and gates reply controls", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 760 });
+  await page.addInitScript(() => {
+    window.localStorage.setItem("thia_cookie_notice_ack", "1");
+  });
   await mockAuthenticatedApi(page);
   let deletedPostId: number | undefined;
   let rebloggedReply = false;
@@ -2804,15 +3086,21 @@ test("mobile thread keeps nested context focused and gates reply controls", asyn
   await expect(page.getByTestId("mobile-nav")).toHaveCount(0);
   await expect(thread.getByText("My reply.")).toBeVisible();
   await expect(thread.getByText("Rebloggable reply.")).toBeVisible();
-  const firstReply = thread.locator('[data-variant="reply"]').filter({ hasText: "My reply." });
-  const secondReply = thread.locator('[data-variant="reply"]').filter({ hasText: "Rebloggable reply." });
+  const firstReply = thread
+    .locator('[data-variant="reply"]')
+    .filter({ hasText: "My reply." });
+  const secondReply = thread
+    .locator('[data-variant="reply"]')
+    .filter({ hasText: "Rebloggable reply." });
   await expect(firstReply).toHaveAttribute("data-depth", "1");
   await expect(secondReply).toHaveAttribute("data-depth", "1");
   await thread.getByRole("button", { name: "Show 1 reply" }).click();
   await expect(thread.getByText("Nested reply.")).toBeVisible();
 
   const topReplyBox = await firstReply.boundingBox();
-  const nestedReply = thread.locator('[data-variant="reply"]').filter({ hasText: "Nested reply." });
+  const nestedReply = thread
+    .locator('[data-variant="reply"]')
+    .filter({ hasText: "Nested reply." });
   const nestedReplyBox = await nestedReply.boundingBox();
   expect(topReplyBox).not.toBeNull();
   expect(nestedReplyBox).not.toBeNull();
@@ -2820,8 +3108,9 @@ test("mobile thread keeps nested context focused and gates reply controls", asyn
   expect(nestedReplyBox!.x - topReplyBox!.x).toBeLessThan(52);
   await expect(nestedReply).toHaveAttribute("data-depth", "2");
 
-  const conversationOverflow = await thread
-    .evaluate((node) => node.scrollWidth > node.clientWidth + 1);
+  const conversationOverflow = await thread.evaluate(
+    (node) => node.scrollWidth > node.clientWidth + 1,
+  );
   expect(conversationOverflow).toBe(false);
 
   await thread.getByRole("button", { name: "Format" }).first().click();
@@ -2846,7 +3135,9 @@ test("mobile thread keeps nested context focused and gates reply controls", asyn
       .locator('[data-variant="focus"]')
       .getByRole("button", { name: "Open replies and reply. 1 reply." }),
   ).toBeVisible();
-  await expect(page.locator("header").getByText("1 reply", { exact: true })).toBeVisible();
+  await expect(
+    page.locator("header").getByText("1 reply", { exact: true }),
+  ).toHaveCount(0);
 });
 
 test("thread report flow submits the post target", async ({ page }) => {
@@ -2875,7 +3166,10 @@ test("thread report flow submits the post target", async ({ page }) => {
     }),
   );
   await page.route("**/api/reports", async (route) => {
-    reportPayload = (await route.request().postDataJSON()) as Record<string, unknown>;
+    reportPayload = (await route.request().postDataJSON()) as Record<
+      string,
+      unknown
+    >;
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ ok: true, data: { id: 1, ...reportPayload } }),
@@ -2897,14 +3191,18 @@ test("thread report flow submits the post target", async ({ page }) => {
 
   await thread.getByRole("button", { name: "Report post" }).first().click();
   await expect(reportDialog).toBeVisible();
-  await reportDialog.getByRole("button", { name: "Report", exact: true }).click();
+  await reportDialog
+    .getByRole("button", { name: "Report", exact: true })
+    .click();
 
-  await expect.poll(() => reportPayload).toMatchObject({
-    targetType: "post",
-    targetId: 42,
-    postId: 42,
-    reportedUserId: 2,
-  });
+  await expect
+    .poll(() => reportPayload)
+    .toMatchObject({
+      targetType: "post",
+      targetId: 42,
+      postId: 42,
+      reportedUserId: 2,
+    });
 });
 
 test("reblog and undo work against the API", async ({ page }) => {
@@ -2940,7 +3238,10 @@ test("reblog and undo work against the API", async ({ page }) => {
 
   const target = feed.data?.posts.find((post) => post.author.id !== userId);
 
-  test.skip(!target, "A public post by another user is required for reblog smoke.");
+  test.skip(
+    !target,
+    "A public post by another user is required for reblog smoke.",
+  );
 
   const wasReblogged =
     target?.rebloggedByMe ?? target?.rebloggedByCurrentUser ?? false;
@@ -2982,16 +3283,14 @@ test("reblog and undo work against the API", async ({ page }) => {
   expect(first.status).toBe(200);
   expect(first.body.ok).toBe(true);
   expect(
-    first.body.data?.rebloggedByMe ??
-      first.body.data?.rebloggedByCurrentUser,
+    first.body.data?.rebloggedByMe ?? first.body.data?.rebloggedByCurrentUser,
   ).toBe(!wasReblogged);
 
   const second = await mutateReblog(wasReblogged ? "POST" : "DELETE");
   expect(second.status).toBe(200);
   expect(second.body.ok).toBe(true);
   expect(
-    second.body.data?.rebloggedByMe ??
-      second.body.data?.rebloggedByCurrentUser,
+    second.body.data?.rebloggedByMe ?? second.body.data?.rebloggedByCurrentUser,
   ).toBe(wasReblogged);
 });
 
@@ -3211,7 +3510,14 @@ async function mockProfileRoutes(
     }),
   );
 
-  for (const suffix of ["posts", "replies", "reblogs", "rooms", "followers", "following"]) {
+  for (const suffix of [
+    "posts",
+    "replies",
+    "reblogs",
+    "rooms",
+    "followers",
+    "following",
+  ]) {
     await page.route(`**/api/profiles/${handle}/${suffix}`, (route) =>
       route.fulfill({
         contentType: "application/json",
@@ -3230,7 +3536,10 @@ async function mockProfileRoutes(
   await page.route(`**/api/profiles/${handle}/badges`, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: { badges: [], featuredBadges: [] } }),
+      body: JSON.stringify({
+        ok: true,
+        data: { badges: [], featuredBadges: [] },
+      }),
     }),
   );
 }
@@ -3329,7 +3638,11 @@ function richMentionEntity(
   };
 }
 
-function richLinkEntity(body: string, url: string, card: Record<string, unknown>) {
+function richLinkEntity(
+  body: string,
+  url: string,
+  card: Record<string, unknown>,
+) {
   return {
     type: "link",
     start: body.indexOf(url),
@@ -3399,7 +3712,8 @@ function richYouTubeCard(url: string) {
       src: "https://www.youtube-nocookie.com/embed/abc123",
       title: "YouTube demo",
       height: 220,
-      allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share",
+      allow:
+        "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share",
     },
     apiBacked: false,
     fetchedAt: "2026-06-10T10:00:00Z",
@@ -3556,7 +3870,10 @@ function sampleMp3File(name: string) {
   return {
     name,
     mimeType: "audio/mpeg",
-    buffer: Buffer.from("SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjYwLjMuMTAwAAAAAAAA", "base64"),
+    buffer: Buffer.from(
+      "SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjYwLjMuMTAwAAAAAAAA",
+      "base64",
+    ),
   };
 }
 

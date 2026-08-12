@@ -12,9 +12,19 @@ test("connections manages real provider accounts from one canonical route", asyn
   });
 
   await page.goto("/settings/connections");
+  await expect(page.getByTestId("connections-page")).toBeVisible();
+  await expect(page.getByTestId("connections-toolbar")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to Settings" })).toHaveAttribute(
+    "href",
+    "/settings",
+  );
   await expect(
     page.getByRole("heading", { name: "Connections", exact: true }),
-  ).toBeVisible();
+  ).toHaveClass(/sr-only/);
+  await expect(page.getByText("Provider accounts", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText("Public profile links and Apple Music links stay in profile editing."),
+  ).toHaveCount(0);
   await expect(page.getByTestId("connections-loading")).toHaveCount(0);
 
   const order = await page.evaluate(() =>
@@ -26,11 +36,28 @@ test("connections manages real provider accounts from one canonical route", asyn
     providers.map((provider) => `connections-provider-row-${provider}`),
   );
 
-  await expect(page.getByTestId("connections-status-spotify")).toHaveText("Connected");
-  await expect(page.getByTestId("connections-status-youtube")).toHaveText(
-    "Ready to connect",
+  const spotifyRow = page.getByTestId("connections-provider-row-spotify");
+  const youtubeRow = page.getByTestId("connections-provider-row-youtube");
+  const githubRow = page.getByTestId("connections-provider-row-github");
+  await expect(spotifyRow).toHaveAttribute("data-connection-state", "connected");
+  await expect(page.getByTestId("connections-identity-spotify")).toHaveText(
+    "Thia on Spotify",
+  );
+  await expect(page.getByTestId("connections-disconnect-spotify")).toBeVisible();
+  await expect(youtubeRow).toHaveAttribute("data-connection-state", "available");
+  await expect(page.getByTestId("connections-connect-youtube")).toBeEnabled();
+  await expect(githubRow).toHaveAttribute("data-connection-state", "unavailable");
+  await expect(page.getByTestId("connections-unavailable-github")).toHaveText(
+    "This provider is not available right now.",
   );
   await expect(page.getByTestId("connections-connect-github")).toBeDisabled();
+  await expect(page.getByTestId("connections-connect-github")).toHaveAttribute(
+    "aria-describedby",
+    "connections-availability-github",
+  );
+  for (const statusLabel of ["Connected", "Ready to connect", "Not available"]) {
+    await expect(page.getByText(statusLabel, { exact: true })).toHaveCount(0);
+  }
   await expect(page.getByText("integrations.github.client_id")).toHaveCount(0);
   await expect(page.getByText("Apple Music", { exact: true })).toHaveCount(0);
 
@@ -40,7 +67,11 @@ test("connections manages real provider accounts from one canonical route", asyn
     "YouTube connected.",
   );
   expect(state.startRedirectPath).toBe("/settings/connections");
-  await expect(page.getByTestId("connections-status-youtube")).toHaveText("Connected");
+  await expect(youtubeRow).toHaveAttribute("data-connection-state", "connected");
+  await expect(page.getByTestId("connections-identity-youtube")).toHaveText(
+    "Viewer on YouTube",
+  );
+  await expect(page.getByTestId("connections-disconnect-youtube")).toBeVisible();
 
   await page.getByTestId("connections-disconnect-spotify").click();
   const dialog = page.getByRole("dialog", { name: "Disconnect Spotify?" });
@@ -50,9 +81,8 @@ test("connections manages real provider accounts from one canonical route", asyn
   await expect(page.getByTestId("connections-notice-success")).toContainText(
     "Spotify disconnected.",
   );
-  await expect(page.getByTestId("connections-status-spotify")).toHaveText(
-    "Ready to connect",
-  );
+  await expect(spotifyRow).toHaveAttribute("data-connection-state", "available");
+  await expect(page.getByTestId("connections-connect-spotify")).toBeEnabled();
   expect(state.disconnectedProvider).toBe("spotify");
 
   const hasHorizontalOverflow = await page.evaluate(

@@ -8,7 +8,6 @@ import {
   Link2,
   MessageCircle,
   MoreHorizontal,
-  Music2,
   Pencil,
   Radio,
   Repeat2,
@@ -367,14 +366,6 @@ export function ProfilePage() {
     setMusicAutoplayDismissedProfileId,
   ] = useState<number | undefined>(undefined);
   const [musicAutoplayRequestId, setMusicAutoplayRequestId] = useState(0);
-  const [
-    spotifyEntryPromptDismissedProfileId,
-    setSpotifyEntryPromptDismissedProfileId,
-  ] = useState<number | undefined>(undefined);
-  const [spotifyEntryPromptPendingHandle, setSpotifyEntryPromptPendingHandle] =
-    useState<string | undefined>();
-  const [spotifyEntryPromptError, setSpotifyEntryPromptError] =
-    useState<{ handle: string; message: string } | undefined>();
   const [followState, setFollowState] = useState<
     { handle: string; relationship: FollowRelationship } | undefined
   >();
@@ -419,12 +410,6 @@ export function ProfilePage() {
   const normalizedHandle = (handle ?? profileHandle ?? "thia")
     .replace(/^@/, "")
     .toLowerCase();
-  const activeSpotifyEntryPromptPending =
-    spotifyEntryPromptPendingHandle === normalizedHandle;
-  const activeSpotifyEntryPromptError =
-    spotifyEntryPromptError?.handle === normalizedHandle
-      ? spotifyEntryPromptError.message
-      : undefined;
   const isOwnProfile =
     status === "authenticated" &&
     Boolean(user) &&
@@ -582,66 +567,6 @@ export function ProfilePage() {
     });
     setMusicAutoplayDismissedProfileId(profile.user.id);
     setMusicAutoplayRequestId((requestId) => requestId + 1);
-  }
-
-  function handleSkipSpotifyEntryPrompt() {
-    if (!profile || !spotifyEntryPromptTarget) {
-      return;
-    }
-
-    writeProfileSpotifyPromptSkip(profileSpotifyPromptSkipKey(profile.user.id), {
-      handle: profile.user.handle,
-      profileId: profile.user.id,
-      skippedAt: new Date().toISOString(),
-    });
-    setSpotifyEntryPromptDismissedProfileId(profile.user.id);
-    setSpotifyEntryPromptError(undefined);
-
-    if (musicAutoplayTarget && !musicAutoplayAllowed) {
-      handleContinueToProfileMusic();
-    }
-  }
-
-  async function handleConnectProfileSpotify() {
-    if (!profile || activeSpotifyEntryPromptPending) {
-      return;
-    }
-
-    setSpotifyEntryPromptPendingHandle(normalizedHandle);
-    setSpotifyEntryPromptError(undefined);
-
-    try {
-      const redirectPath = profileEntryRedirectPath(
-        location.pathname,
-        location.search,
-      );
-      const result = await runWithAuth(
-        (csrfToken) => startProfileIntegration("spotify", csrfToken, redirectPath),
-        { retryOnCsrf: true },
-      );
-
-      if (result.authorizationUrl) {
-        window.location.assign(result.authorizationUrl);
-        return;
-      }
-
-      setSpotifyEntryPromptError({
-        handle: normalizedHandle,
-        message: "Spotify did not return a connection link.",
-      });
-    } catch (error) {
-      setSpotifyEntryPromptError({
-        handle: normalizedHandle,
-        message:
-          error instanceof Error
-            ? error.message
-            : "Could not start Spotify connection.",
-      });
-    } finally {
-      setSpotifyEntryPromptPendingHandle((current) =>
-        current === normalizedHandle ? undefined : current,
-      );
-    }
   }
 
   async function handleFollowToggle() {
@@ -1933,7 +1858,6 @@ export function ProfilePage() {
           <ApiStateNotice
             kind="loading"
             title={`Loading @${normalizedHandle}`}
-            text="Loading profile."
           />
         ) : (
           <ApiStateNotice
@@ -2028,48 +1952,9 @@ export function ProfilePage() {
   const hasVisibleProfileInfoModule = profileCanvasModules.some(
     (module) => module.type === "profile_info",
   );
-  const spotifyEntryPromptTarget =
-    firstProfileSpotifyEntryPromptModule(profileCanvasModules);
-  const spotifyEntryProviderStatus = integrationsState.data?.providers.find(
-    (item) => item.provider === "spotify",
+  const showProfileMusicConsent = Boolean(
+    musicAutoplayTarget && !musicAutoplayAllowed,
   );
-  const spotifyEntryConnectedAccount = integrationsState.data?.accounts.find(
-    (item) => item.provider === "spotify" && !item.revokedAt,
-  );
-  const spotifyEntryPromptSkipped = Boolean(
-    spotifyEntryPromptTarget &&
-      (spotifyEntryPromptDismissedProfileId === renderedProfile.user.id ||
-        readProfileSpotifyPromptSkip(
-          profileSpotifyPromptSkipKey(renderedProfile.user.id),
-          renderedProfile.user.id,
-          renderedProfile.user.handle,
-        )),
-  );
-  const spotifyEntryPromptMode: ProfileEntryGateMode | undefined =
-    !spotifyEntryPromptTarget ||
-    canvasEditing ||
-    isOwnProfile ||
-    status === "loading" ||
-    spotifyEntryPromptSkipped
-      ? undefined
-      : status === "anonymous"
-        ? "spotify-signin"
-        : integrationsState.loading
-          ? undefined
-          : spotifyEntryConnectedAccount
-            ? undefined
-            : spotifyEntryProviderStatus?.oauthEnabled
-              ? "spotify-connect"
-              : undefined;
-  const profileEntryGateMode: ProfileEntryGateMode | undefined =
-    spotifyEntryPromptMode ??
-    (musicAutoplayTarget && !musicAutoplayAllowed ? "music" : undefined);
-  const profileEntryGateSignInPath =
-    profileEntryGateMode === "spotify-signin"
-      ? profileEntryLoginPath(
-          profileEntryRedirectPath(location.pathname, location.search),
-        )
-      : undefined;
 
   function renderProfileModuleContent(
     module: ProfileModule,
@@ -2084,7 +1969,14 @@ export function ProfilePage() {
           activeProfileControlError={activeProfileControlError}
           activeProfileControlMessage={activeProfileControlMessage}
           editing={editing}
-          featuredBadges={featuredBadges}
+          featuredBadges={
+            profileCanvasModules.some(
+              (item) =>
+                item.type === "featured_badges" || item.type === "badge_display",
+            )
+              ? []
+              : featuredBadges
+          }
           followPosting={followPosting}
           isOwnProfile={isOwnProfile}
           onStarToggle={handleStarToggle}
@@ -2354,7 +2246,6 @@ export function ProfilePage() {
               badges={profileBadges}
               canvasGlass={renderedProfile.profileCanvasGlass}
               error={modulesState.error}
-              isOwnProfile={isOwnProfile}
               layoutPreset={profileLayoutPreset}
               loading={modulesState.loading}
               musicAutoplay={musicAutoplayRequest}
@@ -2374,7 +2265,14 @@ export function ProfilePage() {
           badges={profileBadges}
           badgesError={badgesState.error}
           badgesLoading={badgesState.loading}
-          featuredBadges={featuredBadges}
+          featuredBadges={
+            profileCanvasModules.some(
+              (item) =>
+                item.type === "featured_badges" || item.type === "badge_display",
+            )
+              ? []
+              : featuredBadges
+          }
           handle={profile.user.handle}
           isOwnProfile={isOwnProfile}
           panel={activePanel}
@@ -2389,20 +2287,8 @@ export function ProfilePage() {
       ) : null}
         </div>
       </div>
-      {profileEntryGateMode ? (
-        <ProfileEntryGateOverlay
-          connectError={activeSpotifyEntryPromptError}
-          connectPending={activeSpotifyEntryPromptPending}
-          mode={profileEntryGateMode}
-          profile={renderedProfile}
-          signInPath={profileEntryGateSignInPath}
-          onConnectSpotify={() => void handleConnectProfileSpotify()}
-          onContinue={
-            profileEntryGateMode === "music"
-              ? handleContinueToProfileMusic
-              : handleSkipSpotifyEntryPrompt
-          }
-        />
+      {showProfileMusicConsent ? (
+        <ProfileMusicConsentOverlay onContinue={handleContinueToProfileMusic} />
       ) : null}
       <ImageCropModal
         open={Boolean(pendingProfileImageCrop)}
@@ -2554,7 +2440,6 @@ export function ProfilePublicCanvasSnapshot({
       badges={badges}
       canvasGlass={snapshotProfile.profileCanvasGlass}
       error={undefined}
-      isOwnProfile={false}
       layoutPreset={layoutPreset}
       loading={false}
       modules={profileCanvasModules}
@@ -2575,37 +2460,13 @@ function ProfileCanvasEditorLoadingNotice() {
   );
 }
 
-type ProfileEntryGateMode = "music" | "spotify-connect" | "spotify-signin";
-
-function ProfileEntryGateOverlay({
-  connectError,
-  connectPending,
-  mode,
-  onConnectSpotify,
+function ProfileMusicConsentOverlay({
   onContinue,
-  profile,
-  signInPath,
 }: {
-  connectError?: string | undefined;
-  connectPending?: boolean | undefined;
-  mode: ProfileEntryGateMode;
-  onConnectSpotify: () => void;
   onContinue: () => void;
-  profile: Profile;
-  signInPath?: string | undefined;
 }) {
   const continueClickedRef = useRef(false);
   const [continuePending, setContinuePending] = useState(false);
-  const spotifyPrompt = mode !== "music";
-  const title = spotifyPrompt
-    ? "Best with Spotify connected"
-    : "Continue to profile";
-  const text =
-    mode === "spotify-connect"
-      ? "Connect Spotify before entering for the smoothest music experience on this profile."
-      : mode === "spotify-signin"
-        ? "Sign in to connect Spotify before entering, or skip and keep browsing."
-        : "Profile music may start after you continue. Embedded or uploaded music is available on this profile.";
 
   if (typeof document === "undefined") {
     return null;
@@ -2624,78 +2485,26 @@ function ProfileEntryGateOverlay({
   return createPortal(
     <div
       className="fixed inset-0 z-[95] flex items-center justify-center bg-canvas/72 p-4 backdrop-blur-xl"
-      data-profile-entry-gate-mode={mode}
+      data-profile-entry-gate-mode="music"
       data-testid="profile-entry-gate"
     >
       <div
-        className="w-full max-w-sm rounded-panel border border-line bg-surface/86 p-4 text-center shadow-lift backdrop-blur-veil"
-        data-testid={
-          spotifyPrompt
-            ? "profile-spotify-entry-prompt"
-            : "profile-music-continue-overlay"
-        }
+        className="w-full max-w-sm rounded-panel border border-line bg-surface/86 p-4 shadow-lift backdrop-blur-veil"
+        data-testid="profile-music-continue-overlay"
       >
-        <span className="mx-auto grid size-11 place-items-center rounded-card border border-line bg-canvas/70 text-text">
-          <Music2 aria-hidden="true" size={22} />
-        </span>
-        <p className="mt-3 text-xs font-semibold uppercase text-muted">
-          @{profile.user.handle}
+        <h2 className="text-base font-semibold text-text">Profile music</h2>
+        <p className="mt-1 text-sm leading-6 text-muted">
+          Continue to allow music playback on this profile.
         </p>
-        <h2 className="mt-1 text-xl font-semibold text-text">{title}</h2>
-        <p className="mt-2 text-sm leading-6 text-muted">
-          {text}
-        </p>
-        {connectError ? (
-          <p
-            className="mt-3 rounded-card border border-rose/30 bg-rose/12 px-3 py-2 text-sm text-rose-ink"
-            data-testid="profile-spotify-entry-error"
-            role="alert"
-          >
-            {connectError}
-          </p>
-        ) : null}
-        {mode === "spotify-connect" ? (
-          <Button
-            type="button"
-            className="mt-4 w-full justify-center"
-            data-testid="profile-spotify-entry-connect-button"
-            disabled={connectPending}
-            onClick={onConnectSpotify}
-          >
-            {connectPending ? "Opening Spotify" : "Connect Spotify"}
-          </Button>
-        ) : null}
-        {mode === "spotify-signin" ? (
-          <ButtonLink
-            className="mt-4 w-full justify-center"
-            data-testid="profile-spotify-entry-signin-link"
-            to={signInPath ?? "/login"}
-          >
-            Sign in to connect Spotify
-          </ButtonLink>
-        ) : null}
-        {spotifyPrompt ? (
-          <Button
-            type="button"
-            className="mt-2 w-full justify-center"
-            data-testid="profile-spotify-entry-skip-button"
-            disabled={continuePending}
-            variant="secondary"
-            onClick={handleContinueClick}
-          >
-            Skip and continue
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            className="mt-4 w-full justify-center"
-            data-testid="profile-music-continue-button"
-            disabled={continuePending}
-            onClick={handleContinueClick}
-          >
-            Continue to profile
-          </Button>
-        )}
+        <Button
+          type="button"
+          className="mt-4 w-full justify-center"
+          data-testid="profile-music-continue-button"
+          disabled={continuePending}
+          onClick={handleContinueClick}
+        >
+          Continue
+        </Button>
       </div>
     </div>,
     document.body,
@@ -2708,27 +2517,6 @@ type ProfileMusicAutoplayConsent = {
   profileId: number;
   provider: "spotify" | "youtube" | "upload";
 };
-
-type ProfileSpotifyPromptSkip = {
-  handle: string;
-  profileId: number;
-  skippedAt: string;
-};
-
-function firstProfileSpotifyEntryPromptModule(
-  modules: ProfileModule[],
-): ProfileModule | undefined {
-  return modules.find((module) => {
-    const integration = module.config.integration;
-
-    return (
-      module.status === "active" &&
-      module.visibility === "public" &&
-      integration?.provider === "spotify" &&
-      integration.apiBacked === true
-    );
-  });
-}
 
 function firstProfileMusicAutoplayModule(
   modules: ProfileModule[],
@@ -2800,26 +2588,6 @@ function profileMusicAutoplayConsentKey(profileId: number): string {
   return `thia.profile.musicAutoplayConsent.v1:${profileId}`;
 }
 
-function profileSpotifyPromptSkipKey(profileId: number): string {
-  return `thia.profile.spotifyConnectPromptSkip.v1:${profileId}`;
-}
-
-function profileEntryRedirectPath(pathname: string, search: string): string {
-  const params = new URLSearchParams(search);
-
-  params.delete("integrationProvider");
-  params.delete("integrationStatus");
-  params.delete("integrationError");
-
-  const nextSearch = params.toString();
-
-  return nextSearch ? `${pathname}?${nextSearch}` : pathname;
-}
-
-function profileEntryLoginPath(returnTo: string): string {
-  return `/login?returnTo=${encodeURIComponent(returnTo)}`;
-}
-
 function readProfileMusicAutoplayConsent(
   key: string,
   profileId: number,
@@ -2853,50 +2621,6 @@ function readProfileMusicAutoplayConsent(
     );
   } catch {
     return false;
-  }
-}
-
-function readProfileSpotifyPromptSkip(
-  key: string,
-  profileId: number,
-  handle: string,
-): boolean {
-  if (typeof window === "undefined") {
-    return false;
-  }
-
-  try {
-    const value = window.localStorage.getItem(key);
-
-    if (!value) {
-      return false;
-    }
-
-    const parsed = JSON.parse(value) as Partial<ProfileSpotifyPromptSkip>;
-
-    return (
-      parsed.profileId === profileId &&
-      parsed.handle === handle &&
-      typeof parsed.skippedAt === "string" &&
-      parsed.skippedAt.length > 0
-    );
-  } catch {
-    return false;
-  }
-}
-
-function writeProfileSpotifyPromptSkip(
-  key: string,
-  skip: ProfileSpotifyPromptSkip,
-) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(key, JSON.stringify(skip));
-  } catch {
-    // If localStorage is unavailable, the current skip still applies to this view.
   }
 }
 
@@ -3231,17 +2955,7 @@ function ProfileTransitionEditor({
       data-testid="profile-editor"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase text-muted">Profile</p>
-            <h2 className="truncate text-base font-semibold text-text">
-              Edit profile
-            </h2>
-            <p className="mt-1 text-sm leading-5 text-muted">
-              Edit the profile identity and media shown publicly.
-            </p>
-          </div>
-        </div>
+        <h2 className="truncate text-base font-semibold text-text">Edit profile</h2>
 
         <Button
           type="button"
@@ -3412,7 +3126,9 @@ function ProfileInfoAutosaveStatus({
   return (
     <p
       className={cn(
-        "rounded-card border px-3 py-2 text-xs font-semibold",
+        state === "idle" || state === "saved"
+          ? "sr-only"
+          : "rounded-card border px-3 py-2 text-xs font-semibold",
         state === "error"
           ? "border-rose/30 bg-rose/12 text-rose-ink"
           : "border-line bg-canvas/45 text-muted",
@@ -3669,7 +3385,6 @@ export function ProfileAppearanceControls({
       compact={compact}
       config={profile.profileThemeConfig}
       controlAttribute="data-profile-edit-control"
-      description="Choose how your profile looks while people view it."
       label="Appearance"
       previewTitle={profile.user.displayName}
       previewSubtitle={`@${profile.user.handle}`}
@@ -4200,11 +3915,6 @@ function ProfileInfoSizedCard({
                 {!isOwnProfile && profile.isMoot ? (
                   <Badge className={profileInfoBadgeClass}>Moot</Badge>
                 ) : null}
-                {!isOwnProfile && profile.mutedByMe ? (
-                  <Badge className={profileInfoBadgeClass} tone="cool">
-                    Muted
-                  </Badge>
-                ) : null}
                 <ProfileInfoInlineBadges
                   featuredBadges={featuredBadges}
                   maxBadges={layout.badgeLimit}
@@ -4294,6 +4004,7 @@ function ProfileInfoActions({
   starPosting: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmBlockOpen, setConfirmBlockOpen] = useState(false);
 
   const disabled = profile.blockedByMe === true;
   const iconOnly = compact || primaryCompact;
@@ -4312,6 +4023,41 @@ function ProfileInfoActions({
       : "Follow";
   const menuItemClass =
     "flex w-full items-center justify-start gap-2 rounded-card px-2.5 py-2 text-left text-xs font-semibold text-text transition duration-fluid ease-fluid hover:bg-surface-strong focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50";
+
+  function closeBlockConfirmation() {
+    setConfirmBlockOpen(false);
+    window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLButtonElement>(
+          '[data-testid="profile-info-overflow-button"]',
+        )
+        ?.focus();
+    });
+  }
+
+  async function handleBlockAction() {
+    setMenuOpen(false);
+
+    if (!onBlockToggle) {
+      return;
+    }
+
+    if (!profile.blockedByMe) {
+      setConfirmBlockOpen(true);
+      return;
+    }
+
+    await onBlockToggle();
+  }
+
+  async function handleConfirmBlock() {
+    if (!onBlockToggle) {
+      return;
+    }
+
+    await onBlockToggle();
+    closeBlockConfirmation();
+  }
 
   useEffect(() => {
     if (!menuOpen) {
@@ -4335,13 +4081,13 @@ function ProfileInfoActions({
     menuOpen
       ? (
           <div
-            role="menu"
+            role="group"
+            aria-label={`Profile actions for @${profile.user.handle}`}
             data-testid="profile-info-actions-menu"
             className="absolute right-0 top-[calc(100%+0.375rem)] z-[96] w-44 overflow-hidden rounded-card border border-line bg-surface p-1.5 text-sm shadow-lift"
           >
             <button
               type="button"
-              role="menuitem"
               className={menuItemClass}
               onClick={() => {
                 setMenuOpen(false);
@@ -4354,7 +4100,6 @@ function ProfileInfoActions({
             {onMuteToggle ? (
               <button
                 type="button"
-                role="menuitem"
                 className={menuItemClass}
                 disabled={profileControlBusy !== undefined}
                 onClick={() => {
@@ -4369,13 +4114,9 @@ function ProfileInfoActions({
             {onBlockToggle ? (
               <button
                 type="button"
-                role="menuitem"
                 className={menuItemClass}
                 disabled={profileControlBusy !== undefined}
-                onClick={() => {
-                  setMenuOpen(false);
-                  void onBlockToggle();
-                }}
+                onClick={() => void handleBlockAction()}
               >
                 <Shield aria-hidden="true" className="shrink-0" size={14} />
                 <span>{profile.blockedByMe ? "Unblock" : "Block"}</span>
@@ -4388,7 +4129,6 @@ function ProfileInfoActions({
                 targetId={profile.user.id}
                 reportedUserId={profile.user.id}
                 title="Report profile"
-                explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
                 triggerLabel="Report profile"
                 triggerClassName={cn(
                   menuItemClass,
@@ -4402,10 +4142,11 @@ function ProfileInfoActions({
       : null;
 
   return (
-    <div
-      className="relative flex max-w-full shrink-0 items-center justify-end gap-1.5"
-      data-testid="profile-info-action-rail"
-    >
+    <>
+      <div
+        className="relative flex max-w-full shrink-0 items-center justify-end gap-1.5"
+        data-testid="profile-info-action-rail"
+      >
       {isOwnProfile ? null : (
         <>
       {messageToHandle && !disabled ? (
@@ -4472,7 +4213,6 @@ function ProfileInfoActions({
             variant="secondary"
             size="icon"
             className={iconButtonClass}
-            aria-haspopup="menu"
             aria-expanded={menuOpen}
             aria-label={`Profile actions for @${profile.user.handle}`}
             title={`Profile actions for @${profile.user.handle}`}
@@ -4485,7 +4225,41 @@ function ProfileInfoActions({
           {actionsMenu}
         </div>
       ) : null}
-    </div>
+      </div>
+      <ModalSheet
+        busy={profileControlBusy === "block"}
+        closeLabel="Close block confirmation"
+        mobile="dialog"
+        onClose={closeBlockConfirmation}
+        open={confirmBlockOpen}
+        size="sm"
+        title={`Block @${profile.user.handle}?`}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={closeBlockConfirmation}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              disabled={profileControlBusy === "block"}
+              onClick={() => void handleConfirmBlock()}
+            >
+              {profileControlBusy === "block" ? "Blocking" : "Block"}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm leading-6 text-muted">
+          Blocking removes follows and prevents messages. Public content may
+          still appear elsewhere.
+        </p>
+      </ModalSheet>
+    </>
   );
 }
 
@@ -4720,10 +4494,7 @@ function ProfileInfoBlankEditPrompt() {
         <span className="mx-auto grid size-12 place-items-center rounded-card border border-line bg-canvas/70 text-accent-strong">
           <Pencil aria-hidden="true" size={22} />
         </span>
-        <p className="mt-3 text-base font-semibold text-text">Select to edit profile</p>
-        <p className="mt-1 text-sm leading-6 text-muted">
-          Add an avatar, banner, bio, or location from this module.
-        </p>
+        <p className="mt-3 text-base font-semibold text-text">Edit profile</p>
       </div>
     </div>
   );
@@ -5038,17 +4809,9 @@ function ProfileActivityModule({
           activeId={activeTab}
           className={cn("sm:justify-end", slim ? "shrink-0" : undefined)}
           items={[
-            { id: "feed", label: "Feed", meta: feed.length.toLocaleString() },
-            {
-              id: "replies",
-              label: "Replies",
-              meta: profile.stats.replies.toLocaleString(),
-            },
-            {
-              id: "rooms",
-              label: "Rooms",
-              meta: profile.stats.rooms.toLocaleString(),
-            },
+            { id: "feed", label: "Feed" },
+            { id: "replies", label: "Replies" },
+            { id: "rooms", label: "Rooms" },
           ]}
           onChange={onTabChange}
           testId="profile-activity-tabs"
@@ -5073,14 +4836,12 @@ function ProfileActivityModule({
           {activeTab === "feed" ? (
             <ProfilePostList
               emptyCompact
-              emptyDescription="No posts."
               emptyIcon={MessageCircle}
               emptyText="No posts yet"
               errorTitle="Profile feed is not available"
               error={feedError}
               items={feed}
               loading={feedLoading}
-              loadingText="Loading posts."
               loadingTitle="Loading profile feed"
               staticCapture={staticCapture}
             />
@@ -5088,14 +4849,12 @@ function ProfileActivityModule({
           {activeTab === "replies" ? (
             <ProfilePostList
               emptyCompact
-              emptyDescription="No replies."
               emptyIcon={Reply}
               emptyText="No replies yet"
               errorTitle="Replies are not available"
               error={repliesError}
               items={replies}
               loading={repliesLoading}
-              loadingText="Loading replies."
               loadingTitle="Loading replies"
               staticCapture={staticCapture}
             />
@@ -5203,9 +4962,6 @@ function ProfileActivitySlimPostCard({
               <span className="truncate text-xs font-semibold text-text">
                 {post.author.displayName}
               </span>
-              <span className="shrink-0 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted/70">
-                {label}
-              </span>
             </span>
             <span className="block truncate text-[0.68rem] leading-tight text-muted">
               @{post.author.handle} · {formatShortDate(post.createdAt)}
@@ -5305,14 +5061,13 @@ function profileActivityPreviewText(value: string, fallback: string) {
 
 type ProfilePostListProps = {
   emptyCompact?: boolean;
-  emptyDescription: string;
+  emptyDescription?: string | undefined;
   emptyIcon: typeof MessageCircle;
   emptyText: string;
   errorTitle: string;
   error: unknown;
   items: Post[] | undefined;
   loading: boolean;
-  loadingText: string;
   loadingTitle: string;
   staticCapture?: boolean;
 };
@@ -5326,20 +5081,13 @@ function ProfilePostList({
   error,
   items,
   loading,
-  loadingText,
   loadingTitle,
   staticCapture = false,
 }: ProfilePostListProps) {
   const posts = items ?? [];
 
   if (loading) {
-    return (
-      <ApiStateNotice
-        kind="loading"
-        title={loadingTitle}
-        text={loadingText}
-      />
-    );
+    return <ApiStateNotice kind="loading" title={loadingTitle} />;
   }
 
   if (error) {
@@ -5363,7 +5111,13 @@ function ProfilePostList({
       );
     }
 
-    return <EmptyState icon={emptyIcon} title={emptyText} text={emptyDescription} />;
+    return (
+      <EmptyState
+        icon={emptyIcon}
+        title={emptyText}
+        {...(emptyDescription ? { text: emptyDescription } : {})}
+      />
+    );
   }
 
   return (
@@ -5373,6 +5127,7 @@ function ProfilePostList({
           key={post.id}
           post={post}
           index={index}
+          showDestination={false}
           staticCapture={staticCapture}
         />
       ))}
@@ -5386,7 +5141,7 @@ function ProfileCompactEmpty({
   title,
 }: {
   icon: typeof MessageCircle;
-  text: string;
+  text?: string | undefined;
   title: string;
 }) {
   return (
@@ -5396,7 +5151,7 @@ function ProfileCompactEmpty({
       </div>
       <div className="min-w-0">
         <h4 className="text-sm font-semibold text-text">{title}</h4>
-        <p className="mt-1 text-sm leading-5 text-muted">{text}</p>
+        {text ? <p className="mt-1 text-sm leading-5 text-muted">{text}</p> : null}
       </div>
     </div>
   );
@@ -5546,7 +5301,6 @@ function ProfileConnectionList({
       <ApiStateNotice
         kind="loading"
         title={`Loading ${title.toLowerCase()}`}
-        text="Loading."
       />
     );
   }
@@ -5566,7 +5320,6 @@ function ProfileConnectionList({
       <EmptyState
         icon={Users}
         title={`No ${title.toLowerCase()} yet`}
-        text={emptyProfileConnectionText(title)}
       />
     );
   }
@@ -5683,11 +5436,7 @@ function ProfileBadgeList({
 
   if (loading) {
     return (
-      <ApiStateNotice
-        kind="loading"
-        title="Loading badges"
-        text="Loading badges."
-      />
+      <ApiStateNotice kind="loading" title="Loading badges" />
     );
   }
 
@@ -5703,11 +5452,7 @@ function ProfileBadgeList({
 
   if (badges.length === 0) {
     return (
-      <EmptyState
-        icon={Award}
-        title="No badges yet"
-        text="No earned badges."
-      />
+      <EmptyState icon={Award} title="No badges yet" />
     );
   }
 
@@ -5738,18 +5483,6 @@ function ProfileBadgeList({
       </div>
     </div>
   );
-}
-
-function emptyProfileConnectionText(title: string): string {
-  if (title === "Followers") {
-    return "No followers.";
-  }
-
-  if (title === "Following") {
-    return "Not following anyone.";
-  }
-
-  return "No connections.";
 }
 
 type ProfileBadgeCardProps = {
@@ -5797,7 +5530,7 @@ function ProfileBadgeCard({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold text-text">{badge.name}</h3>
             <Badge tone={badgeTone(badge.rarity)}>{rarityLabel(badge.rarity)}</Badge>
-            {featured ? <Badge tone="warm">Featured</Badge> : null}
+            {featured && !isOwnProfile ? <Badge tone="warm">Featured</Badge> : null}
           </div>
           <p className="mt-1 text-xs text-muted">
             Earned {formatBadgeDate(userBadge.earnedAt)}
@@ -5850,11 +5583,7 @@ function ProfileRoomList({
 }: ProfileRoomListProps) {
   if (loading) {
     return (
-      <ApiStateNotice
-        kind="loading"
-        title="Loading rooms"
-        text="Loading rooms."
-      />
+      <ApiStateNotice kind="loading" title="Loading rooms" />
     );
   }
 
@@ -5874,7 +5603,6 @@ function ProfileRoomList({
         <ProfileCompactEmpty
           icon={Radio}
           title="No rooms yet"
-          text="No rooms."
         />
       );
     }
@@ -5883,7 +5611,6 @@ function ProfileRoomList({
       <EmptyState
         icon={Radio}
         title="No rooms yet"
-        text="No rooms."
       />
     );
   }
@@ -5930,21 +5657,13 @@ function ProfileCompactRoomCard({ room }: { room: Room }) {
         )}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="min-w-0 truncate text-sm font-semibold text-text">
-            {room.name}
-          </span>
-          {room.joinedByMe ? (
-            <span className="shrink-0 rounded-full bg-leaf/15 px-1.5 py-0.5 text-[0.62rem] font-semibold text-leaf-ink">
-              Joined
-            </span>
-          ) : room.live ? (
-            <span className="shrink-0 rounded-full bg-leaf/15 px-1.5 py-0.5 text-[0.62rem] font-semibold text-leaf-ink">
-              Active
-            </span>
-          ) : null}
+        <span className="block truncate text-sm font-semibold text-text">
+          {room.name}
         </span>
-        <span className="block truncate text-xs text-muted">/{room.slug}</span>
+        <span className="block truncate text-xs text-muted">
+          /{room.slug}
+          {room.visibility !== "public" ? ` · ${room.visibility.replace("_", "-")}` : ""}
+        </span>
       </span>
       <ArrowRight
         aria-hidden="true"

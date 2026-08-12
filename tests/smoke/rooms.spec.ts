@@ -1,5 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-import { fetchAuthMe, loginWithEnv, skipWithoutCredentials } from "../helpers/auth";
+import {
+  fetchAuthMe,
+  loginWithEnv,
+  skipWithoutCredentials,
+} from "../helpers/auth";
 import {
   CURRENT_WHATS_NEW_RELEASE,
   whatsNewStorageKey,
@@ -10,21 +14,22 @@ test("/rooms renders API rooms or the real empty state", async ({ page }) => {
   await page.goto("/rooms");
 
   await expect(page.getByTestId("rooms-page")).toBeVisible();
-  await expect(page.getByRole("heading", { level: 1, name: "Rooms", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Search rooms")).toBeVisible();
 
   await expect
-    .poll(async () => {
-      const roomCards = await page.getByTestId("room-card").count();
-      const emptyStates = await page.getByText("No public rooms yet").count();
+    .poll(
+      async () => {
+        const roomCards = await page.getByTestId("room-card").count();
+        const emptyStates = await page.getByText("No public rooms yet").count();
 
-      return roomCards > 0 || emptyStates > 0;
-    }, { message: "Rooms should render from the API or show the empty state" })
+        return roomCards > 0 || emptyStates > 0;
+      },
+      { message: "Rooms should render from the API or show the empty state" },
+    )
     .toBe(true);
 });
 
-test("/rooms uses inline loading before revealing rooms", async ({
-  page,
-}) => {
+test("/rooms uses inline loading before revealing rooms", async ({ page }) => {
   let releaseRooms: (() => void) | undefined;
   const roomsResponseDelay = new Promise<void>((resolve) => {
     releaseRooms = resolve;
@@ -35,7 +40,9 @@ test("/rooms uses inline loading before revealing rooms", async ({
 
   await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
   await expect(page.getByTestId("rooms-page")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Loading rooms" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Loading rooms" }),
+  ).toBeVisible();
 
   releaseRooms?.();
   await expect(page.getByTestId("rooms-page")).toBeVisible();
@@ -48,12 +55,15 @@ test("clicking a room opens its detail page", async ({ page }) => {
   await page.goto("/rooms");
 
   await expect
-    .poll(async () => {
-      const roomCards = await page.getByTestId("room-card").count();
-      const emptyStates = await page.getByText("No public rooms yet").count();
+    .poll(
+      async () => {
+        const roomCards = await page.getByTestId("room-card").count();
+        const emptyStates = await page.getByText("No public rooms yet").count();
 
-      return roomCards > 0 || emptyStates > 0;
-    }, { message: "Rooms should finish loading" })
+        return roomCards > 0 || emptyStates > 0;
+      },
+      { message: "Rooms should finish loading" },
+    )
     .toBe(true);
 
   const firstRoom = page.getByTestId("room-card").first();
@@ -145,30 +155,44 @@ test("authenticated room share copies attribution and sends the native Room to a
   await page.getByTestId("room-share-button").click();
   const modal = page.getByTestId("room-share-modal");
   await expect(modal).toBeVisible();
-  await expect(modal.getByRole("link", { name: "/rooms/sun-room" })).toHaveAttribute(
-    "href",
-    "/rooms/sun-room",
+  await expect(modal.getByText("Sun Room", { exact: true })).toBeVisible();
+  await expect(modal.getByText("/sun-room", { exact: true })).toBeVisible();
+  await expect(modal.getByText("A public room.", { exact: true })).toHaveCount(
+    0,
   );
+  await expect(
+    modal.getByRole("link", { name: "/rooms/sun-room" }),
+  ).toHaveCount(0);
   await expect(modal.getByTestId("room-share-card-link")).toHaveAttribute(
     "href",
     "/api/rooms/sun-room/share-card.png",
   );
 
   await modal.getByTestId("room-share-copy-link").click();
-  await expect(modal.getByTestId("room-share-copy-link")).toContainText("Copied");
+  await expect(modal.getByTestId("room-share-copy-link")).toContainText(
+    "Copied",
+  );
   await expect
     .poll(() =>
-      page.evaluate(() => (window as unknown as { __copiedText?: string }).__copiedText),
+      page.evaluate(
+        () => (window as unknown as { __copiedText?: string }).__copiedText,
+      ),
     )
     .toContain(
       "/rooms/sun-room?utm_source=thia.lol&utm_medium=share&utm_campaign=room-share&thia_share=room%3Asun-room",
     );
 
-  await expect(modal.getByTestId("room-share-moot-list")).toContainText("Moon Friend");
+  await expect(modal.getByTestId("room-share-moot-list")).toContainText(
+    "Moon Friend",
+  );
   await modal.getByTestId("room-share-moot-17").click();
   await expect(modal.getByTestId("room-share-moot-17")).toHaveAttribute(
     "aria-pressed",
     "true",
+  );
+  await expect(modal.getByTestId("room-share-note")).not.toHaveAttribute(
+    "placeholder",
+    "Add a note",
   );
   await modal.getByTestId("room-share-note").fill("Meet me in this room");
   await modal.getByTestId("room-share-send-moots").click();
@@ -178,17 +202,19 @@ test("authenticated room share copies attribution and sends the native Room to a
     "href",
     "/chat?conversation=41",
   );
-  await expect.poll(() => shareRequest).toMatchObject({
-    method: "POST",
-    csrfToken: "test-csrf",
-    payload: {
-      recipientUserIds: [17],
-      note: "Meet me in this room",
-    },
-  });
+  await expect
+    .poll(() => shareRequest)
+    .toMatchObject({
+      method: "POST",
+      csrfToken: "test-csrf",
+      payload: {
+        recipientUserIds: [17],
+        note: "Meet me in this room",
+      },
+    });
 });
 
-test("room cards keep room navigation and owner profile navigation separate", async ({
+test("room cards keep one compact room identity", async ({
   page,
 }) => {
   await mockRoomCards(page);
@@ -199,43 +225,75 @@ test("room cards keep room navigation and owner profile navigation separate", as
   await expect(
     firstRoom.getByRole("link", { name: "Open Sun Room" }).first(),
   ).toHaveAttribute("href", "/rooms/sun-room");
-  await expect(firstRoom.getByRole("link", { name: "@owner" })).toHaveAttribute(
-    "href",
-    "/@owner",
-  );
+  await expect(firstRoom.getByText("@owner")).toHaveCount(0);
+  await expect(firstRoom.getByText("Public", { exact: true })).toHaveCount(0);
 });
 
-test("room page Post button opens composer with room preselected", async ({ page }) => {
-  skipWithoutCredentials();
+test("room cards suppress identity fields that repeat the room name", async ({
+  page,
+}) => {
+  await mockRoomCards(page, {
+    room: mockRoom({ name: "dakota", slug: "dakota", summary: "dakota" }),
+  });
 
-  await loginWithEnv(page);
   await page.goto("/rooms");
 
-  await expect
-    .poll(async () => {
-      const roomCards = await page.getByTestId("room-card").count();
-      const emptyStates = await page.getByText("No public rooms yet").count();
+  const room = page.getByTestId("room-card");
+  await expect(room.getByRole("heading", { name: "dakota" })).toBeVisible();
+  await expect(room.getByText("/dakota", { exact: true })).toHaveCount(0);
+  await expect(room.getByText("dakota", { exact: true })).toHaveCount(1);
+});
 
-      return roomCards > 0 || emptyStates > 0;
-    }, { message: "Rooms should finish loading" })
-    .toBe(true);
+test("room page Post button opens composer with room preselected", async ({
+  page,
+}) => {
+  const room = mockRoom({
+    joinedByMe: true,
+    myRoomRole: "member",
+    viewerCanPost: true,
+    viewerCanReact: true,
+  });
+  await acknowledgeCookieNotice(page);
+  await acknowledgeWhatsNewRelease(page, 9);
+  await mockAuthenticatedShell(page);
+  await mockStats(page);
+  await page.route(/\/api\/rooms$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [room] }),
+    });
+  });
+  await page.route(/\/api\/rooms\/sun-room$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: room }),
+    });
+  });
+  await page.route("**/api/rooms/sun-room/posts", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+  await page.route("**/api/rooms/sun-room/members", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
 
-  const firstRoom = page.getByTestId("room-card").first();
-
-  test.skip((await firstRoom.count()) === 0, "No rooms are available for posting.");
-
-  const link = firstRoom.getByRole("link").first();
-  const href = await link.getAttribute("href");
-  const slug = href?.split("/").pop();
-
-  expect(slug).toBeTruthy();
-
-  await link.click();
+  await page.goto("/rooms/sun-room");
   await page.getByTestId("room-post-button").click();
 
   const dialog = page.getByTestId("composer-modal");
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByTestId("composer-room-selector")).toHaveValue(slug!);
+  await expect(dialog.getByTestId("composer-room-selector")).toHaveValue(
+    "sun-room",
+  );
 });
 
 test("Create room button shows for logged-in users", async ({ page }) => {
@@ -257,8 +315,12 @@ test("Create room button shows for logged-in users", async ({ page }) => {
   await expect(modal.getByTestId("room-theme-trigger")).toBeVisible();
   await expect(modal.getByLabel("Accent")).toHaveCount(0);
   await expect(modal.getByLabel("Room rules")).toBeVisible();
-  await expect(modal.locator("label", { hasText: "Change icon" })).toBeVisible();
-  await expect(modal.locator("label", { hasText: "Change banner" })).toBeVisible();
+  await expect(
+    modal.locator("label", { hasText: "Change icon" }),
+  ).toBeVisible();
+  await expect(
+    modal.locator("label", { hasText: "Change banner" }),
+  ).toHaveCount(0);
 });
 
 test("creating rooms can submit each visibility mode", async ({ page }) => {
@@ -282,8 +344,12 @@ test("creating rooms can submit each visibility mode", async ({ page }) => {
     const modal = page.getByTestId("room-edit-modal");
     await modal.getByLabel("Name").fill(`${mode[0]} room`);
     await modal.getByLabel("Slug").fill(slug);
-    await modal.getByLabel("Summary").fill(`A ${mode[0].toLowerCase()} room for smoke testing.`);
-    await modal.locator(`label:has(input[name="room-visibility"][value="${mode[1]}"])`).click();
+    await modal
+      .getByLabel("Summary")
+      .fill(`A ${mode[0].toLowerCase()} room for smoke testing.`);
+    await modal
+      .locator(`label:has(input[name="room-visibility"][value="${mode[1]}"])`)
+      .click();
     await modal.getByRole("button", { name: "Create room" }).click();
 
     await expect.poll(() => createdPayloads.length).toBe(index + 1);
@@ -293,7 +359,9 @@ test("creating rooms can submit each visibility mode", async ({ page }) => {
   }
 });
 
-test("invite room access requests can be requested and canceled", async ({ page }) => {
+test("invite room access requests can be requested and canceled", async ({
+  page,
+}) => {
   const actions = await mockInviteRequestRoom(page);
 
   await acknowledgeCookieNotice(page);
@@ -301,26 +369,36 @@ test("invite room access requests can be requested and canceled", async ({ page 
 
   await expect(page.getByTestId("room-page")).toBeVisible();
   await expect(page.getByText("Access required")).toBeVisible();
-  await expect(page.getByTestId("room-request-access-button")).toContainText("Request access");
+  await expect(page.getByTestId("room-request-access-button")).toContainText(
+    "Request access",
+  );
 
   await page.getByTestId("room-request-access-button").click();
   const rulesModal = page.getByTestId("room-rules-modal");
   await expect(rulesModal).toBeVisible();
   await expect.poll(() => actions.requested()).toBe(0);
   await rulesModal.getByLabel("I agree to follow these rules").check();
-  await rulesModal.getByRole("button", { name: "Agree & request access" }).click();
+  await rulesModal
+    .getByRole("button", { name: "Agree & request access" })
+    .click();
   await expect.poll(() => actions.requested()).toBe(1);
   expect(actions.requestPayloads()).toEqual([
     { acceptedRules: true, acceptedRulesVersion: 1 },
   ]);
-  await expect(page.getByTestId("room-request-access-button")).toContainText("Access requested");
+  await expect(page.getByTestId("room-request-access-button")).toContainText(
+    "Access requested",
+  );
 
   await page.getByTestId("room-request-access-button").click();
   await expect.poll(() => actions.canceled()).toBe(1);
-  await expect(page.getByTestId("room-request-access-button")).toContainText("Request access");
+  await expect(page.getByTestId("room-request-access-button")).toContainText(
+    "Request access",
+  );
 });
 
-test("room staff can approve and deny invite access requests", async ({ page }) => {
+test("room staff can approve and deny invite access requests", async ({
+  page,
+}) => {
   const actions = await mockStaffInviteRoom(page);
 
   await acknowledgeCookieNotice(page);
@@ -340,7 +418,9 @@ test("room staff can approve and deny invite access requests", async ({ page }) 
   await expect(page.getByTestId("room-access-requests")).toHaveCount(0);
 });
 
-test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({ page }) => {
+test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
+  page,
+}) => {
   let channelRequests = 0;
   let messageRequests = 0;
   let readRequests = 0;
@@ -419,6 +499,23 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
       createdAt: "2026-07-10 00:00:00",
       updatedAt: "2026-07-10 00:00:00",
     },
+    {
+      id: 703,
+      roomId: room.id,
+      slug: "announcements",
+      name: "announcements",
+      description: "Important room updates",
+      position: 2,
+      kind: "announcement",
+      readOnly: true,
+      archivedAt: null,
+      conversationId: 9703,
+      unreadCount: 0,
+      lastMessageAt: null,
+      viewerCanPost: false,
+      createdAt: "2026-07-10 00:00:00",
+      updatedAt: "2026-07-10 00:00:00",
+    },
   ];
 
   await mockAuthenticatedShell(page);
@@ -455,158 +552,170 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
       body: JSON.stringify({ ok: true, data: channels }),
     });
   });
-  await page.route("**/api/rooms/stable-room/channels/general/messages", async (route) => {
-    if (route.request().method() === "POST") {
-      const payload = route.request().postDataJSON() as { body?: unknown };
-      const message = {
-        id: 8301 + sentMessages.length,
-        conversationId: 9701,
-        body: typeof payload.body === "string" ? payload.body : "",
-        bodyEntities: [],
-        attachments: [],
-        deletedAt: null,
-        createdAt: new Date().toISOString(),
-        sender: {
-          id: 9,
-          handle: "viewer",
-          displayName: "Viewer",
-          avatarUrl: null,
-        },
-      };
-      sentMessages.push(message);
-      if (delaySendResponse) {
-        delayedSendStarted = true;
-        await sendResponseDelay;
+  await page.route(
+    "**/api/rooms/stable-room/channels/general/messages",
+    async (route) => {
+      if (route.request().method() === "POST") {
+        const payload = route.request().postDataJSON() as { body?: unknown };
+        const message = {
+          id: 8301 + sentMessages.length,
+          conversationId: 9701,
+          body: typeof payload.body === "string" ? payload.body : "",
+          bodyEntities: [],
+          attachments: [],
+          deletedAt: null,
+          createdAt: new Date().toISOString(),
+          sender: {
+            id: 9,
+            handle: "viewer",
+            displayName: "Viewer",
+            avatarUrl: null,
+          },
+        };
+        sentMessages.push(message);
+        if (delaySendResponse) {
+          delayedSendStarted = true;
+          await sendResponseDelay;
+        }
+        await route.fulfill({
+          status: 201,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            data: message,
+          }),
+        });
+        return;
+      }
+
+      messageRequests += 1;
+      if (messageRequests === 1) {
+        await initialMessagesDelay;
+      } else if (delayNextGeneralRefresh) {
+        delayNextGeneralRefresh = false;
+        staleRefreshStarted = true;
+        await staleRefreshDelay;
       }
       await route.fulfill({
-        status: 201,
+        status: 200,
         contentType: "application/json",
         body: JSON.stringify({
           ok: true,
-          data: message,
+          data: {
+            channel: {
+              ...channels[0],
+              unreadCount: messageResponseUnreadCount,
+            },
+            messages: [
+              {
+                id: 8101,
+                conversationId: 9701,
+                body: "The room chat is stable.",
+                bodyEntities: [],
+                attachments: [],
+                deletedAt: null,
+                createdAt: "2026-07-10 09:15:00",
+                sender: {
+                  id: 10,
+                  handle: "mira",
+                  displayName: "Mira",
+                  avatarUrl: null,
+                },
+              },
+              {
+                id: 8102,
+                conversationId: 9701,
+                body: "Room link https://example.com/room",
+                bodyEntities: [
+                  {
+                    type: "link",
+                    start: 10,
+                    length: 24,
+                    text: "https://example.com/room",
+                    link: { url: "https://example.com/room" },
+                  },
+                ],
+                attachments: [],
+                deletedAt: null,
+                createdAt: "2026-07-10 09:15:30",
+                sender: {
+                  id: 10,
+                  handle: "mira",
+                  displayName: "Mira",
+                  avatarUrl: null,
+                },
+              },
+              ...(includeSentMessagesInReads ? sentMessages : []),
+            ],
+          },
         }),
       });
-      return;
-    }
-
-    messageRequests += 1;
-    if (messageRequests === 1) {
-      await initialMessagesDelay;
-    } else if (delayNextGeneralRefresh) {
-      delayNextGeneralRefresh = false;
-      staleRefreshStarted = true;
-      await staleRefreshDelay;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        ok: true,
-        data: {
-          channel: { ...channels[0], unreadCount: messageResponseUnreadCount },
-          messages: [
-            {
-              id: 8101,
-              conversationId: 9701,
-              body: "The room chat is stable.",
-              bodyEntities: [],
-              attachments: [],
-              deletedAt: null,
-              createdAt: "2026-07-10 09:15:00",
-              sender: {
-                id: 10,
-                handle: "mira",
-                displayName: "Mira",
-                avatarUrl: null,
-              },
-            },
-            {
-              id: 8102,
-              conversationId: 9701,
-              body: "Room link https://example.com/room",
-              bodyEntities: [
-                {
-                  type: "link",
-                  start: 10,
-                  length: 24,
-                  text: "https://example.com/room",
-                  link: { url: "https://example.com/room" },
-                },
-              ],
-              attachments: [],
-              deletedAt: null,
-              createdAt: "2026-07-10 09:15:30",
-              sender: {
-                id: 10,
-                handle: "mira",
-                displayName: "Mira",
-                avatarUrl: null,
-              },
-            },
-            ...(includeSentMessagesInReads ? sentMessages : []),
-          ],
-        },
-      }),
-    });
-  });
-  await page.route("**/api/rooms/stable-room/channels/introductions/messages", async (route) => {
-    introductionRequests += 1;
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        ok: true,
-        data: {
-          channel: channels[1],
-          messages: [
-            {
-              id: 8201,
-              conversationId: 9702,
-              body: "This delayed response belongs to introductions.",
-              bodyEntities: [],
-              attachments: [],
-              deletedAt: null,
-              createdAt: "2026-07-10 09:16:00",
-              sender: {
-                id: 11,
-                handle: "alex",
-                displayName: "Alex",
-                avatarUrl: null,
-              },
-            },
-          ],
-        },
-      }),
-    });
-  });
-  await page.route(/\/api\/rooms\/stable-room\/channels\/(general|introductions)\/read$/, async (route) => {
-    readRequests += 1;
-
-    if (failNextReadForCsrf) {
-      failNextReadForCsrf = false;
+    },
+  );
+  await page.route(
+    "**/api/rooms/stable-room/channels/introductions/messages",
+    async (route) => {
+      introductionRequests += 1;
+      await new Promise((resolve) => setTimeout(resolve, 300));
       await route.fulfill({
-        status: 403,
+        status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: false, error: "CSRF token is invalid." }),
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            channel: channels[1],
+            messages: [
+              {
+                id: 8201,
+                conversationId: 9702,
+                body: "This delayed response belongs to introductions.",
+                bodyEntities: [],
+                attachments: [],
+                deletedAt: null,
+                createdAt: "2026-07-10 09:16:00",
+                sender: {
+                  id: 11,
+                  handle: "alex",
+                  displayName: "Alex",
+                  avatarUrl: null,
+                },
+              },
+            ],
+          },
+        }),
       });
-      return;
-    }
+    },
+  );
+  await page.route(
+    /\/api\/rooms\/stable-room\/channels\/(general|introductions)\/read$/,
+    async (route) => {
+      readRequests += 1;
 
-    if (delaySuccessfulRead) {
-      successfulReadStarted = true;
-      await successfulReadDelay;
-    }
+      if (failNextReadForCsrf) {
+        failNextReadForCsrf = false;
+        await route.fulfill({
+          status: 403,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: false, error: "CSRF token is invalid." }),
+        });
+        return;
+      }
 
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        ok: true,
-        data: { conversationId: 9701, readAt: "2026-07-10 09:15:01" },
-      }),
-    });
-  });
+      if (delaySuccessfulRead) {
+        successfulReadStarted = true;
+        await successfulReadDelay;
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: { conversationId: 9701, readAt: "2026-07-10 09:15:01" },
+        }),
+      });
+    },
+  );
 
   await page.addInitScript(() => {
     const actualNow = Date.now.bind(Date);
@@ -622,7 +731,10 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
   });
 
   await page.goto("/rooms/stable-room");
-  await expect(page.getByTestId("room-feed-tab")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("room-feed-tab")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(page.locator("#room-feed-panel")).toBeVisible();
   await expect(page.getByTestId("room-channel-workspace")).toBeHidden();
   expect(channelRequests).toBe(0);
@@ -632,14 +744,42 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
   await page.getByTestId("room-feed-tab").press("ArrowRight");
   await expect(page).toHaveURL(/\/rooms\/stable-room\?tab=chat$/);
   await expect(page.getByTestId("room-channel-workspace")).toBeVisible();
-  await expect(page.getByText("Loading channels", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Loading channels", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Opening room chat", { exact: true }),
+  ).toHaveCount(0);
   await expect(page.getByText("No channels", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("No messages yet", { exact: true })).toHaveCount(0);
-  await expect(page.getByLabel("Write a message")).toBeDisabled();
+  await expect(page.getByText("No messages yet", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(page.getByTestId("room-channel-message-composer")).toHaveCount(
+    0,
+  );
   releaseInitialChannels?.();
-  await expect(page.getByText("Loading messages", { exact: true })).toBeVisible();
-  await expect(page.getByText("No messages yet", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText("Loading messages", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("No messages yet", { exact: true })).toHaveCount(
+    0,
+  );
   await expect(page.getByLabel("Write a message")).toBeDisabled();
+  await expect(
+    page
+      .getByTestId("room-channel-general")
+      .getByText("Open chat", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page
+      .getByTestId("room-channel-introductions")
+      .getByText("Open chat", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page
+      .getByTestId("room-channel-announcements")
+      .getByText("Staff posts", { exact: true }),
+  ).toBeVisible();
   releaseInitialMessages?.();
   await expect(page.getByTestId("room-channel-settings")).toHaveCount(0);
   await expect(page.locator("#room-feed-panel")).toBeHidden();
@@ -669,18 +809,31 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
   });
   await expect.poll(() => staleRefreshStarted).toBe(true);
   expect(channelRequests).toBe(2);
-  await page.getByLabel("Write a message").fill("Keep the selected-channel draft");
+  await page
+    .getByLabel("Write a message")
+    .fill("Keep the selected-channel draft");
   await page.getByTestId("room-channel-general").click();
   expect(messageRequests).toBe(2);
   await expect(page.getByText("The room chat is stable.")).toBeVisible();
-  await expect(page.getByLabel("Write a message")).toHaveValue("Keep the selected-channel draft");
-  await page.getByLabel("Write a message").fill("A polled message must render once");
-  await page.getByTestId("room-channel-message-composer").getByRole("button", { name: "Send" }).click();
-  await expect(page.getByText("A polled message must render once")).toBeVisible();
+  await expect(page.getByLabel("Write a message")).toHaveValue(
+    "Keep the selected-channel draft",
+  );
+  await page
+    .getByLabel("Write a message")
+    .fill("A polled message must render once");
+  await page
+    .getByTestId("room-channel-message-composer")
+    .getByRole("button", { name: "Send" })
+    .click();
+  await expect(
+    page.getByText("A polled message must render once"),
+  ).toBeVisible();
   releaseStaleRefresh?.();
   await page.waitForTimeout(150);
   await expect(page.getByText("The room chat is stable.")).toBeVisible();
-  await expect(page.getByText("A polled message must render once")).toBeVisible();
+  await expect(
+    page.getByText("A polled message must render once"),
+  ).toBeVisible();
   expect(messageRequests).toBe(2);
   expect(readRequests).toBe(0);
   includeSentMessagesInReads = true;
@@ -690,15 +843,22 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
   await page.getByTestId("room-channel-general").click();
   await expect(page.getByText("The room chat is stable.")).toBeVisible();
   await page.waitForTimeout(400);
-  await expect(page.getByText("This delayed response belongs to introductions.")).toHaveCount(0);
+  await expect(
+    page.getByText("This delayed response belongs to introductions."),
+  ).toHaveCount(0);
   expect(messageRequests).toBe(3);
 
   delaySendResponse = true;
   delaySuccessfulRead = true;
   failNextReadForCsrf = true;
   messageResponseUnreadCount = 1;
-  await page.getByLabel("Write a message").fill("A polled message must render once");
-  await page.getByTestId("room-channel-message-composer").getByRole("button", { name: "Send" }).click();
+  await page
+    .getByLabel("Write a message")
+    .fill("A polled message must render once");
+  await page
+    .getByTestId("room-channel-message-composer")
+    .getByRole("button", { name: "Send" })
+    .click();
   await expect.poll(() => delayedSendStarted).toBe(true);
   await page.evaluate(() => {
     const testWindow = window as Window & {
@@ -729,14 +889,20 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
   releaseSuccessfulRead?.();
   messageResponseUnreadCount = 0;
   await expect(
-    roomMessageList.getByText("A polled message must render once", { exact: true }),
+    roomMessageList.getByText("A polled message must render once", {
+      exact: true,
+    }),
   ).toHaveCount(2);
   releaseSendResponse?.();
   await expect(
-    page.getByTestId("room-channel-message-composer").getByRole("button", { name: "Sending" }),
+    page
+      .getByTestId("room-channel-message-composer")
+      .getByRole("button", { name: "Sending" }),
   ).toHaveCount(0);
   await expect(
-    roomMessageList.getByText("A polled message must render once", { exact: true }),
+    roomMessageList.getByText("A polled message must render once", {
+      exact: true,
+    }),
   ).toHaveCount(2);
 
   await page.getByLabel("Write a message").fill("Keep this room draft");
@@ -745,7 +911,9 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
   await page.waitForTimeout(250);
   expect(messageRequests).toBe(5);
   await page.getByTestId("room-chat-tab").click();
-  await expect(page.getByLabel("Write a message")).toHaveValue("Keep this room draft");
+  await expect(page.getByLabel("Write a message")).toHaveValue(
+    "Keep this room draft",
+  );
   expect(messageRequests).toBe(5);
 
   await page.evaluate(() => {
@@ -773,7 +941,10 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
   await expect.poll(() => messageRequests).toBe(6);
 
   await page.goto("/rooms/stable-room?channel=general");
-  await expect(page.getByTestId("room-chat-tab")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("room-chat-tab")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(page.getByTestId("room-channel-workspace")).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -811,9 +982,75 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
   expect(compactComposerLayout.idleCountVisible).toBe(false);
   await expect
     .poll(() =>
-      page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
     )
     .toBe(true);
+});
+
+test("room Chat keeps the no-channels state compact", async ({ page }) => {
+  const room = mockRoom({
+    slug: "empty-chat-room",
+    name: "Empty Chat Room",
+    joinedByMe: true,
+    myRoomRole: "member",
+    viewerCanPost: true,
+  });
+
+  await mockAuthenticatedShell(page);
+  await acknowledgeCookieNotice(page);
+  await acknowledgeWhatsNewRelease(page, 9);
+  await page.route("**/api/rooms/empty-chat-room", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: room }),
+    });
+  });
+  await page.route("**/api/rooms/empty-chat-room/posts", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+  await page.route("**/api/rooms/empty-chat-room/members", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+  await page.route("**/api/rooms/empty-chat-room/channels", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+
+  await page.goto("/rooms/empty-chat-room?tab=chat");
+
+  const workspace = page.getByTestId("room-channel-workspace");
+  await expect(
+    workspace.getByText("No channels", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    workspace.getByText("Loading channels", { exact: true }),
+  ).toHaveCount(0);
+  await expect(workspace.getByTestId("room-channel-message-list")).toHaveCount(
+    0,
+  );
+  await expect(
+    workspace.getByTestId("room-channel-message-composer"),
+  ).toHaveCount(0);
+  await expect
+    .poll(
+      async () =>
+        (await workspace.boundingBox())?.height ?? Number.POSITIVE_INFINITY,
+    )
+    .toBeLessThan(200);
 });
 
 test("Room Chat shares the native renderer and persists attachment-only composer sends", async ({
@@ -830,19 +1067,21 @@ test("Room Chat shares the native renderer and persists attachment-only composer
     messageList.getByText(chat.sharedRoom.canonicalUrl, { exact: true }),
   ).toHaveCount(0);
 
-  const nativeRoomAttachment = messageList.getByTestId("message-room-attachment");
-  await expect(nativeRoomAttachment.getByTestId("room-attachment-card")).toContainText(
-    "Moon Room",
+  const nativeRoomAttachment = messageList.getByTestId(
+    "message-room-attachment",
   );
+  await expect(
+    nativeRoomAttachment.getByTestId("room-attachment-card"),
+  ).toContainText("Moon Room");
   await expect(
     nativeRoomAttachment.getByRole("link", { name: "Open Moon Room" }).last(),
   ).toHaveAttribute("href", "/rooms/moon-room");
-  await expect(messageList.getByTestId("message-post-attachment-unavailable")).toContainText(
-    "Post unavailable",
-  );
-  await expect(messageList.getByTestId("message-room-attachment-unavailable")).toContainText(
-    "Room unavailable",
-  );
+  await expect(
+    messageList.getByTestId("message-post-attachment-unavailable"),
+  ).toContainText("Post unavailable");
+  await expect(
+    messageList.getByTestId("message-room-attachment-unavailable"),
+  ).toContainText("Room unavailable");
 
   await selectRoomGifAttachment(page, "Wave");
   await selectRoomGifAttachment(page, "Spark");
@@ -883,7 +1122,8 @@ test("Room Chat shares the native renderer and persists attachment-only composer
         (box) => box.width >= 44 && box.height >= 44,
       ),
       documentHasNoOverflow:
-        document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
       surfacesFitViewport: attachmentSurfaces.every(
         (box) => box.left >= 0 && box.right <= window.innerWidth,
       ),
@@ -902,12 +1142,18 @@ test("Room Chat shares the native renderer and persists attachment-only composer
   expect(mobileLayout.trayScrollsInternally).toBe(true);
   expect(mobileLayout.controlsAreTouchSized).toBe(true);
 
-  await previews.nth(0).getByRole("button", { name: "Move attachment 1 later" }).click();
+  await previews
+    .nth(0)
+    .getByRole("button", { name: "Move attachment 1 later" })
+    .click();
   await expect(previews.nth(0).locator("img")).toHaveAttribute(
     "src",
     roomMockSecondGifResult.url,
   );
-  await previews.nth(0).getByRole("button", { name: "Remove attachment 1" }).click();
+  await previews
+    .nth(0)
+    .getByRole("button", { name: "Remove attachment 1" })
+    .click();
   await expect(previews).toHaveCount(1);
   await expect(previews.nth(0).locator("img")).toHaveAttribute(
     "src",
@@ -933,10 +1179,9 @@ test("Room Chat shares the native renderer and persists attachment-only composer
       },
     ],
   });
-  await expect(messageList.getByTestId("message-gif-attachment")).toHaveAttribute(
-    "href",
-    "https://klipy.com/room-gif-1",
-  );
+  await expect(
+    messageList.getByTestId("message-gif-attachment"),
+  ).toHaveAttribute("href", "https://klipy.com/room-gif-1");
 
   await page.reload();
   await expect(page.getByTestId("room-channel-message-list")).toBeVisible();
@@ -947,14 +1192,17 @@ test("Room Chat shares the native renderer and persists attachment-only composer
   await expect(page.getByTestId("message-room-attachment")).toBeVisible();
 });
 
-test("joining waits for explicit rules agreement and rules remain available", async ({ page }) => {
+test("joining waits for explicit rules agreement and rules remain available", async ({
+  page,
+}) => {
   let joined = false;
   const joinPayloads: Record<string, unknown>[] = [];
   const room = () =>
     mockRoom({
       slug: "rules-room",
       name: "Rules Room",
-      rules: "1. Be kind.\n2. Stay on topic.\n\n[Read the guide](https://example.com/rules)",
+      rules:
+        "1. Be kind.\n2. Stay on topic.\n\n[Read the guide](https://example.com/rules)",
       rulesVersion: 4,
       joinedByMe: joined,
       myRoomRole: joined ? "member" : null,
@@ -987,7 +1235,9 @@ test("joining waits for explicit rules agreement and rules remain available", as
     });
   });
   await page.route("**/api/rooms/rules-room/join", async (route) => {
-    joinPayloads.push((await route.request().postDataJSON()) as Record<string, unknown>);
+    joinPayloads.push(
+      (await route.request().postDataJSON()) as Record<string, unknown>,
+    );
     joined = true;
     await route.fulfill({
       status: 200,
@@ -1002,12 +1252,13 @@ test("joining waits for explicit rules agreement and rules remain available", as
   const modal = page.getByTestId("room-rules-modal");
   await expect(modal).toBeVisible();
   await expect(modal.getByText("Be kind.")).toBeVisible();
-  await expect(modal.getByRole("link", { name: "Read the guide" })).toHaveAttribute(
-    "href",
-    "https://example.com/rules",
-  );
+  await expect(
+    modal.getByRole("link", { name: "Read the guide" }),
+  ).toHaveAttribute("href", "https://example.com/rules");
   await expect(modal.getByTestId("rich-link-preview")).toHaveCount(0);
-  await expect(modal.getByRole("button", { name: "Agree & join" })).toBeDisabled();
+  await expect(
+    modal.getByRole("button", { name: "Agree & join" }),
+  ).toBeDisabled();
   expect(joinPayloads).toHaveLength(0);
 
   await modal.getByRole("button", { name: "Not now" }).click();
@@ -1019,16 +1270,27 @@ test("joining waits for explicit rules agreement and rules remain available", as
   await modal.getByRole("button", { name: "Agree & join" }).click();
 
   await expect.poll(() => joinPayloads).toHaveLength(1);
-  expect(joinPayloads[0]).toEqual({ acceptedRules: true, acceptedRulesVersion: 4 });
-  await expect(page.getByTestId("room-join-button")).toContainText("Leave room");
+  expect(joinPayloads[0]).toEqual({
+    acceptedRules: true,
+    acceptedRulesVersion: 4,
+  });
+  await expect(page.getByTestId("room-join-button")).toContainText(
+    "Leave room",
+  );
 
   await page.getByTestId("room-rules-button").click();
   await expect(modal).toBeVisible();
-  await expect(modal.getByLabel("I agree to follow these rules")).toHaveCount(0);
-  await expect(modal.getByRole("button", { name: "Close", exact: true })).toBeVisible();
+  await expect(modal.getByLabel("I agree to follow these rules")).toHaveCount(
+    0,
+  );
+  await expect(
+    modal.getByRole("button", { name: "Close", exact: true }),
+  ).toBeVisible();
 });
 
-test("private Room invitees accept rules before membership and then load the Feed", async ({ page }) => {
+test("private Room invitees accept rules before membership and then load the Feed", async ({
+  page,
+}) => {
   let joined = false;
   let postsRequests = 0;
   const joinPayloads: Record<string, unknown>[] = [];
@@ -1101,7 +1363,9 @@ test("private Room invitees accept rules before membership and then load the Fee
       return;
     }
 
-    joinPayloads.push((await route.request().postDataJSON()) as Record<string, unknown>);
+    joinPayloads.push(
+      (await route.request().postDataJSON()) as Record<string, unknown>,
+    );
     joined = true;
     await route.fulfill({
       status: 200,
@@ -1120,30 +1384,42 @@ test("private Room invitees accept rules before membership and then load the Fee
   await modal.getByLabel("I agree to follow these rules").check();
   await modal.getByRole("button", { name: "Agree & join" }).click();
 
-  await expect.poll(() => joinPayloads).toEqual([
-    { acceptedRules: true, acceptedRulesVersion: 3 },
-  ]);
-  await expect(page.getByTestId("room-join-button")).toContainText("Leave room");
+  await expect
+    .poll(() => joinPayloads)
+    .toEqual([{ acceptedRules: true, acceptedRulesVersion: 3 }]);
+  await expect(page.getByTestId("room-join-button")).toContainText(
+    "Leave room",
+  );
   await expect(page.getByTestId("room-chat-tab")).toBeEnabled();
-  await expect(page.getByText("Only current members should see this private post.")).toBeVisible();
+  await expect(
+    page.getByText("Only current members should see this private post."),
+  ).toBeVisible();
   await expect(page.getByText("Posts are not available")).toHaveCount(0);
   await expect.poll(() => postsRequests).toBeGreaterThanOrEqual(2);
 
   await page.getByTestId("room-join-button").click();
   await expect(page.getByText("Room is private")).toBeVisible();
-  await expect(page.getByText("Only current members should see this private post.")).toHaveCount(0);
+  await expect(
+    page.getByText("Only current members should see this private post."),
+  ).toHaveCount(0);
 });
 
-test("view-only rooms hide posting but keep reaction affordances", async ({ page }) => {
+test("view-only rooms hide posting but keep reaction affordances", async ({
+  page,
+}) => {
   await mockViewOnlyRoom(page);
   await acknowledgeCookieNotice(page);
 
   await page.goto("/rooms/read-room");
 
   await expect(page.getByTestId("room-page")).toBeVisible();
-  await expect(page.getByTestId("room-header").getByText("View-only")).toBeVisible();
+  await expect(
+    page.getByTestId("room-header").getByText("View-only"),
+  ).toBeVisible();
   await expect(page.getByTestId("room-post-button")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Like this post/i })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Like this post/i }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: /Open replies/i }).click();
   await expect(page).toHaveURL(/\/@author\/posts\/pcviewonly501$/);
@@ -1184,24 +1460,27 @@ test("room themes recolor active post reactions against the active room theme", 
       leafInk: "#C82F68",
       roseInk: "#C82F68",
     });
-  await expect(page.getByRole("button", { name: /Unlike this post/i })).toHaveCSS(
-    "color",
-    "rgb(200, 47, 104)",
-  );
+  await expect(
+    page.getByRole("button", { name: /Unlike this post/i }),
+  ).toHaveCSS("color", "rgb(200, 47, 104)");
   await expect(page.getByRole("button", { name: /Undo reblog/i })).toHaveCSS(
     "color",
     "rgb(200, 47, 104)",
   );
 });
 
-test("rooms footer keeps legal links without the footer brand lockup", async ({ page }) => {
+test("rooms footer keeps legal links without the footer brand lockup", async ({
+  page,
+}) => {
   await mockRoomCards(page);
   await page.goto("/rooms");
 
   await expect(page.getByTestId("site-footer")).toBeVisible();
   await expect(page.getByTestId("site-footer-brand-lockup")).toHaveCount(0);
   await expect(page.getByTestId("site-footer-brand")).toHaveCount(0);
-  await expect(page.getByTestId("legal-footer-links").getByRole("link", { name: "Terms" })).toBeVisible();
+  await expect(
+    page.getByTestId("legal-footer-links").getByRole("link", { name: "Terms" }),
+  ).toBeVisible();
 });
 
 test("join and leave room API require auth", async ({ page }) => {
@@ -1242,7 +1521,9 @@ test("join and leave room API require auth", async ({ page }) => {
   expect(leaveResult.status).toBe(401);
 });
 
-test("room page shows join and edit states based on auth and role", async ({ page }) => {
+test("room page shows join and edit states based on auth and role", async ({
+  page,
+}) => {
   skipWithoutCredentials();
 
   await loginWithEnv(page);
@@ -1271,7 +1552,9 @@ test("room page shows join and edit states based on auth and role", async ({ pag
     room?.myRoomRole === "owner" ||
     room?.myRoomRole === "moderator";
 
-  await expect(page.getByTestId("edit-room-button")).toHaveCount(canEdit ? 1 : 0);
+  await expect(page.getByTestId("edit-room-button")).toHaveCount(
+    canEdit ? 1 : 0,
+  );
 });
 
 test("rooms do not render retired room copy", async ({ page }) => {
@@ -1284,8 +1567,12 @@ test("rooms do not render retired room copy", async ({ page }) => {
 
 async function mockRoomCards(
   page: Page,
-  options: { roomsResponseDelay?: Promise<void> } = {},
+  options: {
+    room?: ReturnType<typeof mockRoom>;
+    roomsResponseDelay?: Promise<void>;
+  } = {},
 ) {
+  const room = options.room ?? mockRoom();
   await page.route("**/api/auth/me", async (route) => {
     await route.fulfill({
       status: 401,
@@ -1298,7 +1585,7 @@ async function mockRoomCards(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [mockRoom()] }),
+      body: JSON.stringify({ ok: true, data: [room] }),
     });
   });
   await page.route("**/api/stats", async (route) => {
@@ -1320,7 +1607,10 @@ async function mockRoomCards(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: { notifications: [], unreadCount: 0 } }),
+      body: JSON.stringify({
+        ok: true,
+        data: { notifications: [], unreadCount: 0 },
+      }),
     });
   });
   await page.route("**/api/rooms/sun-room", async (route) => {
@@ -1346,14 +1636,24 @@ async function mockRoomCards(
   });
 }
 
-async function mockRoomCreation(page: Page, createdPayloads: Record<string, unknown>[]) {
-  let createdRoom = mockRoom({ joinedByMe: true, myRoomRole: "owner", viewerCanPost: true });
+async function mockRoomCreation(
+  page: Page,
+  createdPayloads: Record<string, unknown>[],
+) {
+  let createdRoom = mockRoom({
+    joinedByMe: true,
+    myRoomRole: "owner",
+    viewerCanPost: true,
+  });
 
   await mockAuthenticatedShell(page);
   await mockStats(page);
   await page.route(/\/api\/rooms$/, async (route) => {
     if (route.request().method() === "POST") {
-      const payload = (await route.request().postDataJSON()) as Record<string, unknown>;
+      const payload = (await route.request().postDataJSON()) as Record<
+        string,
+        unknown
+      >;
       createdPayloads.push(payload);
       createdRoom = mockRoom({
         slug: String(payload.slug ?? "created-room"),
@@ -1450,33 +1750,39 @@ async function mockInviteRequestRoom(page: Page) {
       body: JSON.stringify({ ok: false, error: "Room not found." }),
     });
   });
-  await page.route("**/api/rooms/invite-room/access-requests", async (route) => {
-    if (route.request().method() === "POST") {
-      requested += 1;
-      requestPayloads.push(
-        (await route.request().postDataJSON()) as Record<string, unknown>,
-      );
-      accessRequestStatus = "pending";
-    }
+  await page.route(
+    "**/api/rooms/invite-room/access-requests",
+    async (route) => {
+      if (route.request().method() === "POST") {
+        requested += 1;
+        requestPayloads.push(
+          (await route.request().postDataJSON()) as Record<string, unknown>,
+        );
+        accessRequestStatus = "pending";
+      }
 
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: room() }),
-    });
-  });
-  await page.route("**/api/rooms/invite-room/access-requests/me", async (route) => {
-    if (route.request().method() === "DELETE") {
-      canceled += 1;
-      accessRequestStatus = null;
-    }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: room() }),
+      });
+    },
+  );
+  await page.route(
+    "**/api/rooms/invite-room/access-requests/me",
+    async (route) => {
+      if (route.request().method() === "DELETE") {
+        canceled += 1;
+        accessRequestStatus = null;
+      }
 
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: room() }),
-    });
-  });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: room() }),
+      });
+    },
+  );
 
   return {
     requested: () => requested,
@@ -1486,7 +1792,10 @@ async function mockInviteRequestRoom(page: Page) {
 }
 
 async function mockStaffInviteRoom(page: Page) {
-  let requests = [roomAccessRequest(101, "asha", "Asha"), roomAccessRequest(102, "ben", "Ben")];
+  let requests = [
+    roomAccessRequest(101, "asha", "Asha"),
+    roomAccessRequest(102, "ben", "Ben"),
+  ];
   const deniedIds: number[] = [];
   const approvedIds: number[] = [];
   const room = () =>
@@ -1527,36 +1836,42 @@ async function mockStaffInviteRoom(page: Page) {
     });
   });
   await mockRoomChannelRoutes(page, "invite-room", room());
-  await page.route(/\/api\/rooms\/invite-room\/access-requests(?:\/(\d+)\/(approve|deny))?$/, async (route) => {
-    const match = route.request().url().match(/\/access-requests(?:\/(\d+)\/(approve|deny))?$/);
-    const requestId = match?.[1] ? Number(match[1]) : undefined;
-    const action = match?.[2];
+  await page.route(
+    /\/api\/rooms\/invite-room\/access-requests(?:\/(\d+)\/(approve|deny))?$/,
+    async (route) => {
+      const match = route
+        .request()
+        .url()
+        .match(/\/access-requests(?:\/(\d+)\/(approve|deny))?$/);
+      const requestId = match?.[1] ? Number(match[1]) : undefined;
+      const action = match?.[2];
 
-    if (route.request().method() === "GET") {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: true, data: requests }),
+        });
+        return;
+      }
+
+      if (requestId && action === "deny") {
+        deniedIds.push(requestId);
+        requests = requests.filter((request) => request.id !== requestId);
+      }
+
+      if (requestId && action === "approve") {
+        approvedIds.push(requestId);
+        requests = requests.filter((request) => request.id !== requestId);
+      }
+
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ ok: true, data: requests }),
       });
-      return;
-    }
-
-    if (requestId && action === "deny") {
-      deniedIds.push(requestId);
-      requests = requests.filter((request) => request.id !== requestId);
-    }
-
-    if (requestId && action === "approve") {
-      approvedIds.push(requestId);
-      requests = requests.filter((request) => request.id !== requestId);
-    }
-
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: requests }),
-    });
-  });
+    },
+  );
 
   return {
     approved: () => approvedIds,
@@ -1659,7 +1974,10 @@ async function mockAuthenticatedShell(page: Page) {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: { notifications: [], unreadCount: 0 } }),
+      body: JSON.stringify({
+        ok: true,
+        data: { notifications: [], unreadCount: 0 },
+      }),
     });
   });
   await page.route("**/api/me/onboarding", async (route) => {
@@ -1788,7 +2106,10 @@ async function mockPersistentRoomAttachmentChat(page: Page) {
 
   await mockAuthenticatedShell(page);
   await acknowledgeCookieNotice(page);
-  await mockRoomChatGifSearch(page, [roomMockGifResult, roomMockSecondGifResult]);
+  await mockRoomChatGifSearch(page, [
+    roomMockGifResult,
+    roomMockSecondGifResult,
+  ]);
 
   await page.route("**/api/rooms/attachment-room", async (route) => {
     await route.fulfill({
@@ -1822,7 +2143,10 @@ async function mockPersistentRoomAttachmentChat(page: Page) {
     "**/api/rooms/attachment-room/channels/general/messages",
     async (route) => {
       if (route.request().method() === "POST") {
-        const payload = route.request().postDataJSON() as Record<string, unknown>;
+        const payload = route.request().postDataJSON() as Record<
+          string,
+          unknown
+        >;
         sentPayloads.push(payload);
         const message = {
           id: 8500 + sentPayloads.length,
@@ -1945,7 +2269,8 @@ function roomChatAttachmentsFromRequest(value: unknown) {
             resourceId: stringValue(attachment.resourceId),
             resourceKey: stringValue(attachment.resourceKey),
             url: stringValue(attachment.url),
-            previewUrl: stringValue(card?.previewUrl) || stringValue(attachment.url),
+            previewUrl:
+              stringValue(card?.previewUrl) || stringValue(attachment.url),
             mime: "image/gif" as const,
             width: numberOrNull(attachment.width),
             height: numberOrNull(attachment.height),
@@ -2034,26 +2359,32 @@ async function mockRoomChannelRoutes(
       body: JSON.stringify({ ok: true, data: [channel] }),
     });
   });
-  await page.route(`**/api/rooms/${slug}/channels/general/messages`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: { channel, messages: [] } }),
-    });
-  });
-  await page.route(`**/api/rooms/${slug}/channels/general/read`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        ok: true,
-        data: {
-          conversationId: channel.conversationId,
-          readAt: "2026-07-10 00:00:00",
-        },
-      }),
-    });
-  });
+  await page.route(
+    `**/api/rooms/${slug}/channels/general/messages`,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: { channel, messages: [] } }),
+      });
+    },
+  );
+  await page.route(
+    `**/api/rooms/${slug}/channels/general/read`,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            conversationId: channel.conversationId,
+            readAt: "2026-07-10 00:00:00",
+          },
+        }),
+      });
+    },
+  );
 }
 
 function completedOnboardingState() {
@@ -2229,12 +2560,15 @@ const roomTransparentGifBase64 = "R0lGODlhAQABAAAAACwAAAAAAQABAAA=";
 
 async function firstRoomSlug(page: Page) {
   await expect
-    .poll(async () => {
-      const roomCards = await page.getByTestId("room-card").count();
-      const emptyStates = await page.getByText("No public rooms yet").count();
+    .poll(
+      async () => {
+        const roomCards = await page.getByTestId("room-card").count();
+        const emptyStates = await page.getByText("No public rooms yet").count();
 
-      return roomCards > 0 || emptyStates > 0;
-    }, { message: "Rooms should finish loading" })
+        return roomCards > 0 || emptyStates > 0;
+      },
+      { message: "Rooms should finish loading" },
+    )
     .toBe(true);
 
   const firstRoom = page.getByTestId("room-card").first();

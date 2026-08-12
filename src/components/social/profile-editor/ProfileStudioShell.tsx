@@ -142,7 +142,9 @@ export function ProfileStudioShell({
           </div>
           <p
             className={cn(
-              "hidden min-w-0 items-center gap-1.5 truncate text-xs font-semibold sm:flex",
+              autosaveError || autosaveMessage.startsWith("Saving")
+                ? "hidden min-w-0 items-center gap-1.5 truncate text-xs font-semibold sm:flex"
+                : "sr-only",
               autosaveError ? "text-rose-ink" : "text-muted",
             )}
             role={autosaveError ? "alert" : "status"}

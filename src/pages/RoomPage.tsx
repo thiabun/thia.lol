@@ -1,6 +1,5 @@
 import {
   ArrowLeft,
-  Clock3,
   Hash,
   Inbox,
   LoaderCircle,
@@ -14,7 +13,6 @@ import {
   Share2,
   Shield,
   Send,
-  UserRound,
   UsersRound,
   WifiOff,
 } from "lucide-react";
@@ -29,7 +27,6 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent,
-  type ReactNode,
 } from "react";
 import { useNavigate, useOutletContext, useParams, useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
@@ -52,7 +49,6 @@ import {
 } from "../components/social/UserProfileLink";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Avatar } from "../components/ui/Avatar";
-import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
@@ -578,7 +574,6 @@ export function RoomPage() {
           canEdit={canEditRoom}
           canReport={user?.id !== room.createdBy}
           pendingAction={pendingRoomAction}
-          postCount={posts.length > room.postCount ? posts.length : room.postCount}
           userSignedIn={Boolean(user)}
           onAccessRequestToggle={() => void handleAccessRequestToggle()}
           onEdit={() => setEditOpen(true)}
@@ -591,11 +586,7 @@ export function RoomPage() {
           onShare={() => setShareOpen(true)}
         />
       ) : roomState.loading ? (
-        <ApiStateNotice
-          kind="loading"
-          title="Opening room"
-          text="Loading room."
-        />
+        <ApiStateNotice kind="loading" title="Opening room" />
       ) : (
         <ApiStateNotice
           kind="error"
@@ -639,7 +630,6 @@ export function RoomPage() {
         <ApiStateNotice
           kind="loading"
           title="Loading room posts"
-          text="Loading posts."
         />
       ) : null}
 
@@ -679,11 +669,7 @@ export function RoomPage() {
       ) : null}
 
       {visibleTab === "feed" && !postsAccessGated && !postsState.loading && !postsState.error && room && posts.length === 0 ? (
-        <EmptyState
-          icon={MessageCircle}
-          title="No posts yet"
-          text="No room posts."
-        />
+        <EmptyState icon={MessageCircle} title="No posts yet" />
       ) : null}
 
       {visibleTab === "feed" && !postsAccessGated && posts.length > 0 ? (
@@ -693,6 +679,7 @@ export function RoomPage() {
               key={post.id}
               post={post}
               index={index}
+              showDestination={false}
               canDelete={canDeletePost(user, post)}
               canHide={canHidePost(user)}
               actionPending={pendingPostId === post.id}
@@ -1469,9 +1456,39 @@ function RoomChannelWorkspace({
         <CompactStateNotice
           centered
           icon={MessageCircle}
-          title="Room chat"
-          text="Sign in to read and post room channels."
+          title="Sign in for room chat"
         />
+      </Panel>
+    );
+  }
+
+  if (!activeChannel) {
+    return (
+      <Panel
+        aria-labelledby="room-tab-chat"
+        className={cn("p-2", !active && "hidden")}
+        data-testid="room-channel-workspace"
+        hidden={!active}
+        id="room-chat-panel"
+        role="tabpanel"
+        style={roomThemeSwatchCssProperties(room)}
+      >
+        {channelsLoading ? (
+          <CompactStateNotice
+            icon={LoaderCircle}
+            kind="loading"
+            title="Loading channels"
+          />
+        ) : channelsError ? (
+          <CompactStateNotice
+            icon={WifiOff}
+            kind="error"
+            title="Could not load channels"
+            text={channelsError}
+          />
+        ) : (
+          <CompactStateNotice icon={Inbox} title="No channels" />
+        )}
       </Panel>
     );
   }
@@ -1500,35 +1517,17 @@ function RoomChannelWorkspace({
             mobileChannelPaneOpen ? "hidden" : "block",
           )}
         >
-          <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-3">
-            <div className="min-w-0">
-              <h2 className="truncate text-sm font-semibold text-text">Channels</h2>
-              <p className="text-xs text-muted">{formatCountWithUnit(orderedChannels.length, "channel")}</p>
-            </div>
+          <div className="border-b border-line px-3 py-3">
+            <h2 className="truncate text-sm font-semibold text-text">Channels</h2>
           </div>
 
           <div className="grid min-w-0 gap-1 p-2 lg:block lg:space-y-1">
-            {channelsLoading ? (
-              <CompactStateNotice
-                icon={LoaderCircle}
-                kind="loading"
-                title="Loading channels"
-                text="Loading channels."
-              />
-            ) : null}
             {channelsError ? (
               <CompactStateNotice
                 icon={WifiOff}
                 kind="error"
                 title="Could not load channels"
                 text={channelsError}
-              />
-            ) : null}
-            {!channelsLoading && !channelsError && orderedChannels.length === 0 ? (
-              <CompactStateNotice
-                icon={Inbox}
-                title="No channels"
-                text="No room channels."
               />
             ) : null}
             {orderedChannels.map((channel) => (
@@ -1576,7 +1575,9 @@ function RoomChannelWorkspace({
               ) : null}
             </div>
             {activeChannel?.readOnly ? (
-              <Badge className="shrink-0" tone="warm">Staff posting</Badge>
+              <span className="shrink-0 text-xs font-medium text-muted lg:hidden">
+                Staff posting
+              </span>
             ) : null}
           </div>
 
@@ -1585,20 +1586,11 @@ function RoomChannelWorkspace({
             className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-4"
             data-testid="room-channel-message-list"
           >
-            {!activeChannel && channelsLoading ? (
-              <CompactStateNotice
-                icon={LoaderCircle}
-                kind="loading"
-                title="Opening room chat"
-                text="Loading channels."
-              />
-            ) : null}
             {showMessagesLoading ? (
               <CompactStateNotice
                 icon={LoaderCircle}
                 kind="loading"
                 title="Loading messages"
-                text="Loading messages."
               />
             ) : null}
             {messagesError ? (
@@ -1613,8 +1605,7 @@ function RoomChannelWorkspace({
               <CompactStateNotice
                 centered
                 icon={MessageCircle}
-                title="No messages yet"
-                text={activeChannel?.readOnly ? "No announcements yet." : "Send the first message."}
+                title={activeChannel.readOnly ? "No announcements yet" : "No messages yet"}
               />
             ) : null}
             {messages.map((message) => (
@@ -1720,9 +1711,9 @@ function RoomChannelButton({
       <Icon aria-hidden="true" size={15} className="shrink-0" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold">{channel.name}</span>
-        <span className="block truncate text-[0.68rem]">
-          {channel.readOnly ? "Staff posts" : "Open chat"}
-        </span>
+        {channel.readOnly ? (
+          <span className="block truncate text-[0.68rem]">Staff posts</span>
+        ) : null}
       </span>
       {channel.unreadCount > 0 ? (
         <span className="grid min-w-5 shrink-0 place-items-center rounded-full bg-accent px-1.5 py-0.5 text-xs font-semibold leading-none text-accent-ink shadow-soft">
@@ -1849,7 +1840,6 @@ function RoomMessageMeta({
             targetId={message.id}
             reportedUserId={message.sender.id}
             title="Report message"
-            explainer="This reports this room message to moderators."
             triggerMode="icon"
             triggerLabel="Report message"
             triggerSize="compact"
@@ -1887,9 +1877,12 @@ function RoomAccessRequestsPanel({
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Shield aria-hidden="true" size={16} className="text-muted" />
-          <h2 className="text-sm font-semibold text-text">Access requests</h2>
+          <h2 className="text-sm font-semibold text-text">
+            {loading
+              ? "Access requests"
+              : `Access requests (${requests.length})`}
+          </h2>
         </div>
-        <Badge tone="cool">{loading ? "Loading" : formatCountWithUnit(requests.length, "request")}</Badge>
       </div>
       {error ? (
         <p className="mt-3 rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
@@ -1942,7 +1935,6 @@ function RoomHeader({
   onJoinToggle,
   onRules,
   pendingAction,
-  postCount,
   room,
   userSignedIn,
   onShare,
@@ -1956,23 +1948,20 @@ function RoomHeader({
   onRules: () => void;
   onShare: () => void;
   pendingAction: string | undefined;
-  postCount: number;
   room: Room;
   userSignedIn: boolean;
 }) {
   const isOwner = room.myRoomRole === "owner";
   const joinLabel = room.joinedByMe
-    ? isOwner
-      ? "Joined"
-      : pendingAction === "leave"
-        ? "Leaving"
-        : "Leave room"
+    ? pendingAction === "leave"
+      ? "Leaving"
+      : "Leave room"
     : pendingAction === "join"
       ? "Joining"
       : "Join";
   const canJoinRoom = userSignedIn && room.viewerCanJoin;
   const canLeaveRoom = userSignedIn && Boolean(room.joinedByMe) && !isOwner;
-  const showJoinAction = canJoinRoom || canLeaveRoom || isOwner;
+  const showJoinAction = canJoinRoom || canLeaveRoom;
   const accessRequestPending = room.accessRequestStatus === "pending";
   const showAccessRequestAction = userSignedIn && (room.viewerCanRequestAccess || accessRequestPending);
   const showShareAction =
@@ -1987,80 +1976,64 @@ function RoomHeader({
       : "Request access";
 
   return (
-    <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-      <Panel
-        className="overflow-hidden"
+    <motion.div
+      variants={cardEntrance}
+      custom={0}
+      initial="hidden"
+      animate="show"
+    >
+      <header
+        className="border-b border-line/75 pb-3"
         data-testid="room-header"
         style={roomThemeSwatchCssProperties(room)}
       >
-        {room.bannerUrl ? (
-          <img alt="" src={room.bannerUrl} className="h-24 w-full object-cover sm:h-28" />
-        ) : null}
-        <div className="p-4 sm:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex min-w-0 flex-1 gap-3">
-              <div
-                className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-card border bg-canvas/65 shadow-inner-soft sm:size-16"
-                style={{
-                  borderColor:
-                    "color-mix(in oklab, var(--room-accent) 42%, var(--room-line))",
-                  background:
-                    "linear-gradient(135deg, color-mix(in oklab, var(--room-accent) 34%, transparent), var(--room-canvas))",
-                }}
-              >
-                {room.iconUrl ? (
-                  <img alt="" src={room.iconUrl} className="size-full object-cover" />
-                ) : (
-                  <Radio aria-hidden="true" size={22} className="text-text" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="min-w-0 text-2xl font-semibold tracking-normal text-text sm:text-3xl">
-                    {room.name}
-                  </h1>
-                  {room.myRoomRole ? (
-                    <Badge className="min-h-6 px-2 text-[0.7rem]" tone="warm">
-                      {roleLabel(room.myRoomRole)}
-                    </Badge>
-                  ) : null}
-                  <Badge className="min-h-6 px-2 text-[0.7rem]" tone={room.visibility === "public" ? "cool" : "warm"}>
-                    {roomVisibilityLabel(room.visibility)}
-                  </Badge>
-                </div>
-                <p className="mt-0.5 text-sm text-muted">/{room.slug}</p>
-                {room.description || room.summary ? (
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-                    {room.description || room.summary}
-                  </p>
-                ) : null}
-                <div
-                  className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-muted"
-                  data-testid="room-meta"
-                >
-                  <RoomMetaItem icon={MessageCircle}>
-                    {formatCountWithUnit(postCount, "post")}
-                  </RoomMetaItem>
-                  <RoomMetaItem icon={UsersRound}>
-                    {formatCountWithUnit(room.memberCount, "member")}
-                  </RoomMetaItem>
-                  {room.latestActivityAt ? (
-                    <RoomMetaItem icon={Clock3}>
-                      {formatActivityTime(room.latestActivityAt)}
-                    </RoomMetaItem>
-                  ) : null}
-                  {room.owner ? (
-                    <RoomMetaItem icon={UserRound}>
-                      <span>by </span>
-                      <InlineUserProfileLink user={room.owner}>
-                        @{room.owner.handle}
-                      </InlineUserProfileLink>
-                    </RoomMetaItem>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-            <div className="grid w-full shrink-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap lg:justify-end">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex min-w-0 flex-1 gap-3">
+          <div
+            className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-card border bg-canvas/65 shadow-inner-soft"
+            style={{
+              borderColor:
+                "color-mix(in oklab, var(--room-accent) 42%, var(--room-line))",
+              background:
+                "linear-gradient(135deg, color-mix(in oklab, var(--room-accent) 34%, transparent), var(--room-canvas))",
+            }}
+          >
+            {room.iconUrl ? (
+              <img alt="" src={room.iconUrl} className="size-full object-cover" />
+            ) : (
+              <Radio aria-hidden="true" size={19} className="text-text" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-xl font-semibold tracking-normal text-text sm:text-2xl">
+              {room.name}
+            </h1>
+            <p className="mt-0.5 text-xs text-muted">
+              /{room.slug}
+              {room.myRoomRole ? ` · ${roleLabel(room.myRoomRole)}` : ""}
+              {room.visibility !== "public"
+                ? ` · ${roomVisibilityLabel(room.visibility)}`
+                : ""}
+            </p>
+            {room.description || room.summary ? (
+              <p className="mt-1.5 max-w-3xl text-sm leading-5 text-muted">
+                {room.description || room.summary}
+              </p>
+            ) : null}
+            <p className="mt-1.5 text-xs text-muted" data-testid="room-meta">
+              {formatCountWithUnit(room.memberCount, "member")}
+              {room.owner ? (
+                <>
+                  {" · by "}
+                  <InlineUserProfileLink user={room.owner}>
+                    @{room.owner.handle}
+                  </InlineUserProfileLink>
+                </>
+              ) : null}
+            </p>
+          </div>
+        </div>
+        <div className="grid w-full shrink-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap lg:justify-end">
               {showJoinAction ? (
                 <Button
                   type="button"
@@ -2068,7 +2041,7 @@ function RoomHeader({
                   size="sm"
                   className="w-full sm:w-auto"
                   data-testid="room-join-button"
-                  disabled={Boolean(pendingAction) || isOwner}
+                  disabled={Boolean(pendingAction)}
                   icon={<UsersRound aria-hidden="true" size={17} />}
                   onClick={onJoinToggle}
                 >
@@ -2144,16 +2117,14 @@ function RoomHeader({
                   targetId={room.id}
                   reportedUserId={room.owner?.id}
                   title="Report room"
-                  explainer={`This reports /${room.slug} to moderators.`}
                   triggerMode="icon"
                   triggerLabel="Report room"
                   triggerClassName="size-9 rounded-full"
                 />
               ) : null}
-            </div>
-          </div>
         </div>
-      </Panel>
+        </div>
+      </header>
     </motion.div>
   );
 }
@@ -2209,25 +2180,10 @@ function RoomMemberRow({
   return (
     <div className="flex items-center justify-between gap-2 rounded-card border border-line bg-canvas/35 px-3 py-2">
       <UserIdentityLink user={user} showAvatar={false} className="min-w-0 flex-1" />
-      <Badge className="min-h-6 px-2 text-[0.7rem]" tone={role === "owner" ? "warm" : "cool"}>
+      <span className="text-xs font-medium text-muted">
         {roleLabel(role)}
-      </Badge>
+      </span>
     </div>
-  );
-}
-
-function RoomMetaItem({
-  children,
-  icon: Icon,
-}: {
-  children: ReactNode;
-  icon: typeof MessageCircle;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <Icon aria-hidden="true" size={14} />
-      <span className="min-w-0">{children}</span>
-    </span>
   );
 }
 

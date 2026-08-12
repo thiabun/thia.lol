@@ -9,7 +9,7 @@ type ApiStateNoticeProps = {
   kind: "loading" | "error";
   testId?: string;
   title: string;
-  text: string;
+  text?: string;
 };
 
 export function ApiStateNotice({
@@ -34,7 +34,9 @@ export function ApiStateNotice({
         </div>
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-text">{title}</h2>
-          <p className="mt-1 text-sm leading-6 text-muted">{text}</p>
+          {stateTextIsUseful(title, text) ? (
+            <p className="mt-1 text-sm leading-6 text-muted">{text}</p>
+          ) : null}
           {actions ? (
             <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
               {actions}
@@ -44,4 +46,15 @@ export function ApiStateNotice({
       </div>
     </Panel>
   );
+}
+
+function stateTextIsUseful(title: string, text?: string) {
+  if (!text?.trim()) {
+    return false;
+  }
+
+  const normalize = (value: string) =>
+    value.toLocaleLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+  return normalize(title) !== normalize(text);
 }

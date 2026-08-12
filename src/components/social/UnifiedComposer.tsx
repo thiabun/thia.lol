@@ -19,6 +19,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { cn } from "../../lib/classNames";
+import { distinctSecondaryText } from "../../lib/displayText";
 import {
   createPost,
   createPostReply,
@@ -480,7 +481,7 @@ export function UnifiedComposer({
               </p>
               <p className="truncate text-xs text-muted">
                 {isReply
-                  ? "Replying in this thread"
+                  ? user ? `@${user.handle}` : "Sign in to reply"
                   : user
                     ? `@${user.handle}`
                     : "Sign in to share"}
@@ -756,7 +757,7 @@ function ComposerAttachmentPreview({
             src={attachment.url}
           />
           <p className="truncate px-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-            KLIPY GIF
+            KLIPY
           </p>
         </div>
       ) : attachment.type === "video" ? (
@@ -832,8 +833,10 @@ function ComposerIntegrationPreview({
 }) {
   const title =
     attachment.card.metadata.title ?? providerLabel(attachment.provider);
-  const subtitle =
-    attachment.card.metadata.subtitle ?? providerLabel(attachment.provider);
+  const subtitle = distinctSecondaryText(
+    title,
+    attachment.card.metadata.subtitle ?? providerLabel(attachment.provider),
+  );
   const imageUrl = attachment.card.metadata.imageUrl;
 
   return (
@@ -851,7 +854,9 @@ function ComposerIntegrationPreview({
         <span className="block truncate text-sm font-semibold text-text">
           {title}
         </span>
-        <span className="mt-1 block truncate text-xs text-muted">{subtitle}</span>
+        {subtitle ? (
+          <span className="mt-1 block truncate text-xs text-muted">{subtitle}</span>
+        ) : null}
       </span>
     </div>
   );

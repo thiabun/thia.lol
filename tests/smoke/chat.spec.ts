@@ -13,9 +13,14 @@ test("chat route shows an honest logged-out state and keeps Chat in nav", async 
   await mockAnonymousShell(page);
   await page.goto("/chat");
 
-  await expect(page.getByRole("heading", { name: "Chat", exact: true })).toBeVisible();
+  await expect(page.getByTestId("chat-page")).toBeVisible();
   await expect(page.getByText("Sign in to see messages.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByText("Chat requires sign-in.")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Chat", exact: true })).toHaveClass(
+    /sr-only/,
+  );
+  await expect(page.getByText("Private messages with moots.")).toHaveCount(0);
 
   const nav = page.getByTestId("desktop-nav");
   await expect(nav.getByRole("link", { name: "Chat" })).toBeVisible();
@@ -28,9 +33,15 @@ test("authenticated chat renders conversations and message composer", async ({
   await mockAuthenticatedChat(page);
   await page.goto("/chat");
 
-  await expect(page.getByRole("heading", { name: "Chat", exact: true })).toBeVisible();
+  await expect(page.getByTestId("chat-workspace")).toBeVisible();
+  await expect(page.getByTestId("chat-conversation-actions")).toBeVisible();
   await expect(page.getByTestId("chat-new-chat-button")).toBeVisible();
+  await expect(page.getByTestId("chat-refresh-conversations-button")).toHaveAccessibleName(
+    "Refresh conversations",
+  );
   await expect(page.getByTestId("chat-conversation-list")).toContainText("Moot Friend");
+  await expect(page.getByTestId("chat-message-list")).toContainText("hello from a moot");
+  await expect(page.getByText("Select a chat to read or reply.")).toHaveCount(0);
   await expect(
     page
       .getByTestId("chat-conversation-list")
@@ -118,9 +129,19 @@ test("mobile chat uses a vertical list and focused conversation pane", async ({ 
 
   const mobileNav = page.getByTestId("mobile-nav");
   const conversationList = page.getByTestId("chat-conversation-list");
+  const conversationActions = page.getByTestId("chat-conversation-actions");
   await expect(conversationList).toBeVisible();
+  await expect(conversationActions).toBeVisible();
   await expect(mobileNav).toBeVisible();
   await expect(page.getByTestId("chat-message-composer")).toHaveCount(0);
+
+  const actionSizes = await conversationActions.getByRole("button").evaluateAll((buttons) =>
+    buttons.map((button) => ({
+      height: (button as HTMLElement).offsetHeight,
+      width: (button as HTMLElement).offsetWidth,
+    })),
+  );
+  expect(actionSizes.every((size) => size.height >= 44 && size.width >= 44)).toBe(true);
 
   const row = page.getByTestId("chat-conversation-row-10");
   const rowBox = await row.boundingBox();
@@ -231,6 +252,9 @@ test("switching conversations does not show stale messages under the next partic
   });
   await expect(messageList).toHaveCount(0);
   await expect(page.getByText("Conversation not available", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("This direct-message conversation could not be found."),
+  ).toHaveCount(0);
   await expect.poll(() => conversationListRequests).toBe(
     requestsBeforeMissingConversation + 1,
   );
@@ -596,7 +620,7 @@ test("chat GIF picker shows an unavailable KLIPY state", async ({ page }) => {
   await gifButton.click();
 
   await expect(page.getByText("KLIPY unavailable")).toBeVisible();
-  await expect(page.getByText("GIF search is unavailable.")).toBeVisible();
+  await expect(page.getByText("GIF search is unavailable.")).toHaveCount(0);
 });
 
 test("chat GIF picker uses the literal Heroicons mark for an empty result", async ({
@@ -609,7 +633,7 @@ test("chat GIF picker uses the literal Heroicons mark for an empty result", asyn
   await page.getByRole("button", { name: "Add GIF" }).click();
 
   const emptyState = page.getByTestId("gif-picker-empty");
-  await expect(emptyState).toContainText("No GIFs found.");
+  await expect(emptyState).toContainText("No GIFs found");
   await expect(
     emptyState.locator('svg[data-icon="gif"][data-icon-source="heroicons"]'),
   ).toHaveAttribute("stroke-width", "2");
@@ -1002,8 +1026,10 @@ test("authenticated chat empty state stays route-level", async ({ page }) => {
   await mockAuthenticatedChat(page, { conversations: [] });
   await page.goto("/chat");
 
-  await expect(page.getByRole("heading", { name: "Chat", exact: true })).toBeVisible();
+  await expect(page.getByTestId("chat-page")).toBeVisible();
   await expect(page.getByText("No chats yet")).toBeVisible();
+  await expect(page.getByText("Start with a moot.")).toHaveCount(0);
+  await expect(page.getByTestId("chat-new-chat-button")).toBeVisible();
   await expect(page.getByTestId("chat-conversation-list")).toHaveCount(0);
   await expect(page.getByTestId("chat-message-composer")).toHaveCount(0);
   await expect(page.getByTestId("chat-room-summary")).toHaveCount(0);
@@ -1109,7 +1135,9 @@ test("conversation member can report an individual chat message", async ({ page 
   await reportTrigger.click();
   const reportDialog = page.getByRole("dialog", { name: "Report message" });
 
-  await expect(reportDialog).toContainText("reports this chat message");
+  await expect(reportDialog).toContainText(
+    "Reports are reviewed against the Community Guidelines.",
+  );
   await reportDialog.getByLabel("What's wrong?").selectOption("harassment");
   await reportDialog.getByRole("button", { name: "Report", exact: true }).click();
 

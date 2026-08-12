@@ -1,11 +1,6 @@
 import { Copy, Download, LoaderCircle, Share2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link } from "react-router";
-import {
-  profileCanonicalPath,
-  profileCanonicalUrl,
-  profileShareCardUrl,
-} from "../../lib/api";
+import { profileCanonicalUrl, profileShareCardUrl } from "../../lib/api";
 import { shareUrlWithAttribution } from "../../lib/growthAttribution";
 import type { Profile } from "../../lib/types";
 import { Avatar } from "../ui/Avatar";
@@ -18,13 +13,20 @@ type ProfileShareModalProps = {
   profile: Profile;
 };
 
-export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalProps) {
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
-  const [cardState, setCardState] = useState<"idle" | "downloading" | "error">("idle");
+export function ProfileShareModal({
+  onClose,
+  open,
+  profile,
+}: ProfileShareModalProps) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
+    "idle",
+  );
+  const [cardState, setCardState] = useState<"idle" | "downloading" | "error">(
+    "idle",
+  );
   const [nativeShareAvailable] = useState(
     () => typeof navigator !== "undefined" && "share" in navigator,
   );
-  const canonicalPath = profileCanonicalPath(profile);
   const canonicalUrl = profileCanonicalUrl(profile);
   const shareUrl = shareUrlWithAttribution(canonicalUrl, {
     kind: "profile",
@@ -85,7 +87,13 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
         },
       });
 
-      if (!response.ok || !response.headers.get("content-type")?.toLowerCase().startsWith("image/jpeg")) {
+      if (
+        !response.ok ||
+        !response.headers
+          .get("content-type")
+          ?.toLowerCase()
+          .startsWith("image/jpeg")
+      ) {
         throw new Error("Profile share card is not available as JPEG.");
       }
 
@@ -110,7 +118,6 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
       open={open}
       onClose={onClose}
       title="Share profile"
-      description={`Share @${profile.user.handle}'s profile.`}
       closeLabel="Close share dialog"
       testId="profile-share-modal"
       size="md"
@@ -122,20 +129,11 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
           <Avatar user={profile.user} size="md" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-semibold text-text">{profile.user.displayName}</span>
+              <span className="font-semibold text-text">
+                {profile.user.displayName}
+              </span>
               <span className="text-muted">@{profile.user.handle}</span>
             </div>
-            {profile.bio ? (
-              <p className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-sm leading-6 text-text">
-                {profile.bio}
-              </p>
-            ) : null}
-            <Link
-              to={canonicalPath}
-              className="mt-2 inline-flex text-xs font-medium text-accent-strong underline-offset-4 hover:underline"
-            >
-              {canonicalPath}
-            </Link>
           </div>
         </div>
       </div>
@@ -171,7 +169,11 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
           disabled={cardState === "downloading"}
           icon={
             cardState === "downloading" ? (
-              <LoaderCircle aria-hidden="true" className="animate-spin" size={15} />
+              <LoaderCircle
+                aria-hidden="true"
+                className="animate-spin"
+                size={15}
+              />
             ) : (
               <Download aria-hidden="true" size={15} />
             )
@@ -190,7 +192,12 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
       {cardState === "error" ? (
         <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
           Image download failed. You can still open the current card at{" "}
-          <a className="underline" href={profileShareCardUrl(profile)} rel="noreferrer" target="_blank">
+          <a
+            className="underline"
+            href={profileShareCardUrl(profile)}
+            rel="noreferrer"
+            target="_blank"
+          >
             this link
           </a>
           .

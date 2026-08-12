@@ -17,7 +17,6 @@ import { ModalSheet } from "../ui/ModalSheet";
 import { CompactStateNotice } from "../ui/RouteState";
 import {
   getChatMoots,
-  postCanonicalPath,
   postCanonicalUrl,
   postPublicIdentifier,
   postShareCardCacheUpload,
@@ -36,6 +35,11 @@ type PostShareModalProps = {
   onClose: () => void;
 };
 
+type SentConversationLink = {
+  conversationId: number;
+  recipientLabel: string;
+};
+
 export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
   const { csrfToken, runWithAuth, status, user } = useAuth();
   const [moots, setMoots] = useState<ChatMoot[]>([]);
@@ -46,21 +50,32 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
   const [shareMessage, setShareMessage] = useState<string>();
-  const [sentConversationIds, setSentConversationIds] = useState<number[]>([]);
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
-  const [cardState, setCardState] = useState<"idle" | "generating" | "error">("idle");
+  const [sentConversations, setSentConversations] = useState<
+    SentConversationLink[]
+  >([]);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
+    "idle",
+  );
+  const [cardState, setCardState] = useState<"idle" | "generating" | "error">(
+    "idle",
+  );
   const [nativeShareAvailable] = useState(
     () => typeof navigator !== "undefined" && "share" in navigator,
   );
-  const canonicalPath = postCanonicalPath(post);
   const canonicalUrl = postCanonicalUrl(post);
   const publicIdentifier = postPublicIdentifier(post);
   const shareUrl = shareUrlWithAttribution(canonicalUrl, {
     kind: "post",
     ref: publicIdentifier,
   });
-  const canPublishCard = status === "authenticated" && user?.id === post.author.id;
+  const canPublishCard =
+    status === "authenticated" && user?.id === post.author.id;
   const selectedCount = selectedIds.size;
+  const hasSelectableMoots =
+    status === "authenticated" &&
+    !mootsLoading &&
+    !mootsError &&
+    moots.length > 0;
   const filteredMoots = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
@@ -84,7 +99,7 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
     queueMicrotask(() => {
       setCopyState("idle");
       setShareMessage(undefined);
-      setSentConversationIds([]);
+      setSentConversations([]);
     });
   }, [open]);
 
@@ -232,7 +247,8 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
           { quality: 0.9, type: "image/jpeg" },
         );
         await runWithAuth(
-          (freshCsrfToken) => postShareCardCacheUpload(post, socialCardBlob, freshCsrfToken),
+          (freshCsrfToken) =>
+            postShareCardCacheUpload(post, socialCardBlob, freshCsrfToken),
           { retryOnCsrf: true },
         ).catch(() => undefined);
       }
@@ -272,7 +288,7 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
 
     setSending(true);
     setShareMessage(undefined);
-    setSentConversationIds([]);
+    setSentConversations([]);
 
     try {
       const trimmedNote = note.trim();
@@ -282,16 +298,43 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
             publicIdentifier,
             trimmedNote === ""
               ? { recipientUserIds: Array.from(selectedIds) }
-              : { recipientUserIds: Array.from(selectedIds), note: trimmedNote },
+              : {
+                  recipientUserIds: Array.from(selectedIds),
+                  note: trimmedNote,
+                },
             freshCsrfToken,
           ),
         { retryOnCsrf: true },
       );
-      const sentIds = result.results
-        .filter((item) => item.status === "sent")
-        .map((item) => item.conversationId);
+      const conversations = result.results.flatMap((item) => {
+        if (item.status !== "sent") {
+          return [];
+        }
 
-      setSentConversationIds(Array.from(new Set(sentIds)));
+        const recipient =
+          item.recipient ??
+          moots.find((moot) => moot.id === item.recipientUserId);
+
+        return [
+          {
+            conversationId: item.conversationId,
+            recipientLabel: recipient
+              ? `${recipient.displayName} (@${recipient.handle})`
+              : `recipient ${item.recipientUserId}`,
+          },
+        ];
+      });
+
+      setSentConversations(
+        Array.from(
+          new Map(
+            conversations.map((conversation) => [
+              conversation.conversationId,
+              conversation,
+            ]),
+          ).values(),
+        ),
+      );
       setShareMessage(
         result.failedCount > 0
           ? `Sent to ${result.sentCount}. ${result.failedCount} could not be sent.`
@@ -311,7 +354,6 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
       open={open}
       onClose={onClose}
       title="Share post"
-      description={`Share @${post.author.handle}'s post.`}
       closeLabel="Close share dialog"
       testId="post-share-modal"
       size="lg"
@@ -323,18 +365,14 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
           <Avatar user={post.author} size="sm" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-semibold text-text">{post.author.displayName}</span>
+              <span className="font-semibold text-text">
+                {post.author.displayName}
+              </span>
               <span className="text-muted">@{post.author.handle}</span>
             </div>
             <p className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-sm leading-6 text-text">
               {post.body}
             </p>
-            <Link
-              to={canonicalPath}
-              className="mt-2 inline-flex text-xs font-medium text-accent-strong underline-offset-4 hover:underline"
-            >
-              {canonicalPath}
-            </Link>
           </div>
         </div>
       </div>
@@ -370,7 +408,11 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
           disabled={cardState === "generating"}
           icon={
             cardState === "generating" ? (
-              <LoaderCircle aria-hidden="true" className="animate-spin" size={15} />
+              <LoaderCircle
+                aria-hidden="true"
+                className="animate-spin"
+                size={15}
+              />
             ) : (
               <Download aria-hidden="true" size={15} />
             )
@@ -389,7 +431,12 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
       {cardState === "error" ? (
         <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
           Image generation failed. You can still open the current cached card at{" "}
-          <a className="underline" href={postShareCardUrl(post)} rel="noreferrer" target="_blank">
+          <a
+            className="underline"
+            href={postShareCardUrl(post)}
+            rel="noreferrer"
+            target="_blank"
+          >
             this link
           </a>
           .
@@ -398,43 +445,26 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
 
       <section className="space-y-3" aria-label="Send to moots">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-text">Send to moots</h3>
-            <p className="text-xs text-muted">Choose up to 10 mutuals.</p>
-          </div>
-          <span className="text-xs font-medium text-muted">{selectedCount}/10 selected</span>
+          <h3 className="text-sm font-semibold text-text">Send to moots</h3>
+          {hasSelectableMoots ? (
+            <span className="text-xs font-medium text-muted">
+              {selectedCount}/10 selected
+            </span>
+          ) : null}
         </div>
 
         {status !== "authenticated" ? (
           <CompactStateNotice
             icon={MessageCircle}
             title="Log in to send"
-            text="You can still copy the public link or save the share card."
           />
         ) : (
           <>
-            <label className="relative block">
-              <span className="sr-only">Search moots</span>
-              <Search
-                aria-hidden="true"
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
-                size={15}
-              />
-              <input
-                className="min-h-10 w-full rounded-control border border-line bg-canvas/60 py-2 pl-9 pr-3 text-sm text-text outline-none transition duration-fluid placeholder:text-muted focus:border-line-strong focus:ring-2 focus:ring-focus/30"
-                data-testid="post-share-moot-search"
-                placeholder="Search moots"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </label>
-
             {mootsLoading ? (
               <CompactStateNotice
                 icon={LoaderCircle}
                 kind="loading"
                 title="Loading moots"
-                text="Finding people you can message."
               />
             ) : null}
             {mootsError ? (
@@ -452,86 +482,111 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
                 text="Mutual follows can receive shared posts in chat."
               />
             ) : null}
-            {!mootsLoading && !mootsError && filteredMoots.length > 0 ? (
-              <div
-                className="max-h-56 space-y-2 overflow-y-auto rounded-card border border-line bg-canvas/40 p-2"
-                data-testid="post-share-moot-list"
-              >
-                {filteredMoots.map((moot) => {
-                  const selected = selectedIds.has(moot.id);
+            {hasSelectableMoots ? (
+              <>
+                <label className="relative block">
+                  <span className="sr-only">Search moots</span>
+                  <Search
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+                    size={15}
+                  />
+                  <input
+                    className="min-h-10 w-full rounded-control border border-line bg-canvas/60 py-2 pl-9 pr-3 text-sm text-text outline-none transition duration-fluid placeholder:text-muted focus:border-line-strong focus:ring-2 focus:ring-focus/30"
+                    data-testid="post-share-moot-search"
+                    placeholder="Search moots"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                </label>
 
-                  return (
-                    <button
-                      key={moot.id}
-                      type="button"
-                      className={cn(
-                        "flex w-full items-center gap-3 rounded-card border px-3 py-2 text-left transition duration-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-                        selected
-                          ? "border-accent bg-accent/15"
-                          : "border-transparent hover:border-line hover:bg-surface",
-                      )}
-                      data-testid={`post-share-moot-${moot.id}`}
-                      aria-pressed={selected}
-                      onClick={() => toggleMoot(moot.id)}
-                    >
-                      <Avatar user={moot} size="sm" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-text">
-                          {moot.displayName}
-                        </span>
-                        <span className="block truncate text-xs text-muted">
-                          @{moot.handle}
-                        </span>
-                      </span>
-                      {selected ? (
-                        <CheckCircle2 aria-hidden="true" className="text-accent" size={18} />
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
+                {filteredMoots.length > 0 ? (
+                  <div
+                    className="max-h-56 space-y-2 overflow-y-auto rounded-card border border-line bg-canvas/40 p-2"
+                    data-testid="post-share-moot-list"
+                  >
+                    {filteredMoots.map((moot) => {
+                      const selected = selectedIds.has(moot.id);
+
+                      return (
+                        <button
+                          key={moot.id}
+                          type="button"
+                          className={cn(
+                            "flex w-full items-center gap-3 rounded-card border px-3 py-2 text-left transition duration-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+                            selected
+                              ? "border-accent bg-accent/15"
+                              : "border-transparent hover:border-line hover:bg-surface",
+                          )}
+                          data-testid={`post-share-moot-${moot.id}`}
+                          aria-pressed={selected}
+                          onClick={() => toggleMoot(moot.id)}
+                        >
+                          <Avatar user={moot} size="sm" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold text-text">
+                              {moot.displayName}
+                            </span>
+                            <span className="block truncate text-xs text-muted">
+                              @{moot.handle}
+                            </span>
+                          </span>
+                          {selected ? (
+                            <CheckCircle2
+                              aria-hidden="true"
+                              className="text-accent"
+                              size={18}
+                            />
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-muted">
+                    Optional note
+                  </span>
+                  <textarea
+                    className="min-h-20 w-full resize-none rounded-card border border-line bg-canvas/60 px-3 py-2 text-sm leading-6 text-text outline-none transition duration-fluid focus:border-line-strong focus:ring-2 focus:ring-focus/30"
+                    data-testid="post-share-note"
+                    maxLength={500}
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
+                  />
+                </label>
+
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-muted">{note.length}/500</p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    data-testid="post-share-send-moots"
+                    disabled={!csrfToken || selectedCount === 0 || sending}
+                    icon={<Send aria-hidden="true" size={15} />}
+                    onClick={() => void handleSend()}
+                  >
+                    {sending ? "Sending" : "Send"}
+                  </Button>
+                </div>
+              </>
             ) : null}
-
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-muted">
-                Optional note
-              </span>
-              <textarea
-                className="min-h-20 w-full resize-none rounded-card border border-line bg-canvas/60 px-3 py-2 text-sm leading-6 text-text outline-none transition duration-fluid placeholder:text-muted focus:border-line-strong focus:ring-2 focus:ring-focus/30"
-                data-testid="post-share-note"
-                maxLength={500}
-                placeholder="Add a note"
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-              />
-            </label>
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-muted">{note.length}/500</p>
-              <Button
-                type="button"
-                size="sm"
-                data-testid="post-share-send-moots"
-                disabled={!csrfToken || selectedCount === 0 || sending}
-                icon={<Send aria-hidden="true" size={15} />}
-                onClick={() => void handleSend()}
-              >
-                {sending ? "Sending" : "Send"}
-              </Button>
-            </div>
 
             {shareMessage ? (
               <div className="rounded-card border border-line bg-surface/70 p-3 text-sm text-text">
                 <p>{shareMessage}</p>
-                {sentConversationIds.length > 0 ? (
+                {sentConversations.length > 0 ? (
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {sentConversationIds.map((conversationId) => (
+                    {sentConversations.map((conversation) => (
                       <Link
-                        key={conversationId}
-                        to={`/chat?conversation=${conversationId}`}
+                        key={conversation.conversationId}
+                        to={`/chat?conversation=${conversation.conversationId}`}
                         className="rounded-full border border-line bg-canvas px-2.5 py-1 text-xs font-medium text-text hover:border-line-strong"
                       >
-                        Open chat
+                        {sentConversations.length > 1
+                          ? `Open chat with ${conversation.recipientLabel}`
+                          : "Open chat"}
                       </Link>
                     ))}
                   </div>

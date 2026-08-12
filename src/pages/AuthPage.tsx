@@ -3,9 +3,7 @@ import { motion } from "motion/react";
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
-import { BrandLogoMain } from "../components/BrandLogo";
 import { PageMeta } from "../components/PageMeta";
-import { Badge } from "../components/ui/Badge";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { HandleField, TextField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
@@ -41,8 +39,9 @@ export function AuthPage({ mode }: AuthPageProps) {
     { available: boolean; handle: string } | undefined
   >();
   const [handleChecking, setHandleChecking] = useState(false);
-  const [twoFactorChallenge, setTwoFactorChallenge] =
-    useState<TwoFactorChallenge | undefined>();
+  const [twoFactorChallenge, setTwoFactorChallenge] = useState<
+    TwoFactorChallenge | undefined
+  >();
   const normalizedHandle = normalizeHandleInput(handle).toLowerCase();
   const handleReady = /^[a-z0-9][a-z0-9_-]{1,38}[a-z0-9]$/u.test(
     normalizedHandle,
@@ -117,7 +116,9 @@ export function AuthPage({ mode }: AuthPageProps) {
 
       navigate(isRegister ? "/onboarding" : loginReturnTo, { replace: true });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Something went wrong.");
+      setError(
+        caught instanceof Error ? caught.message : "Something went wrong.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -142,7 +143,11 @@ export function AuthPage({ mode }: AuthPageProps) {
       await refreshSession();
       navigate(loginReturnTo, { replace: true });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Code could not be verified.");
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Code could not be verified.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -151,7 +156,8 @@ export function AuthPage({ mode }: AuthPageProps) {
   if (status === "authenticated" && user && !twoFactorChallenge) {
     return (
       <motion.div
-        className="mx-auto grid min-h-[calc(100dvh-9rem)] max-w-5xl place-items-center"
+        className="mx-auto max-w-lg"
+        data-testid="auth-page"
         variants={pageEntrance}
         initial="hidden"
         animate="show"
@@ -162,20 +168,14 @@ export function AuthPage({ mode }: AuthPageProps) {
           path={isRegister ? "/register" : "/login"}
         />
         <motion.div
-          className="w-full max-w-lg"
+          className="w-full"
           variants={cardEntrance}
           custom={0}
           initial="hidden"
           animate="show"
         >
           <Panel className="w-full p-5 text-center sm:p-6">
-            <BrandLogoMain
-              className="mx-auto mb-5"
-              data-testid="auth-brand-logo-main"
-              size="md"
-            />
-            <Badge tone="leaf">Signed in</Badge>
-            <h1 className="mt-4 text-2xl font-semibold tracking-normal text-text">
+            <h1 className="text-2xl font-semibold tracking-normal text-text">
               You are signed in as {user.displayName}
             </h1>
             <p className="mt-2 text-sm text-muted">@{user.handle}</p>
@@ -202,7 +202,8 @@ export function AuthPage({ mode }: AuthPageProps) {
 
   return (
     <motion.div
-      className="mx-auto grid min-h-[calc(100dvh-9rem)] max-w-5xl place-items-center"
+      className="mx-auto max-w-xl"
+      data-testid="auth-page"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -213,7 +214,7 @@ export function AuthPage({ mode }: AuthPageProps) {
         path={isRegister ? "/register" : "/login"}
       />
       <motion.div
-        className="w-full max-w-xl"
+        className="w-full"
         variants={cardEntrance}
         custom={0}
         initial="hidden"
@@ -224,24 +225,14 @@ export function AuthPage({ mode }: AuthPageProps) {
             className="p-5 sm:p-6"
             onSubmit={twoFactorChallenge ? handleTwoFactorSubmit : handleSubmit}
           >
-            <BrandLogoMain
-              className="mb-5"
-              data-testid="auth-brand-logo-main"
-              size="md"
-            />
-            <Badge tone={isRegister ? "warm" : "cool"}>
-              {isRegister ? "create account" : "sign in"}
-            </Badge>
-            <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
+            <h1 className="text-2xl font-semibold tracking-normal text-text">
               {isRegister ? "Create account" : "Sign in"}
             </h1>
-            <p className="mt-3 text-base leading-7 text-muted">
-              {isRegister
-                ? "Choose your public name and handle."
-                : twoFactorChallenge
-                  ? "Enter your authenticator or recovery code."
-                  : "Use your account."}
-            </p>
+            {twoFactorChallenge ? (
+              <p className="mt-3 text-base leading-7 text-muted">
+                Enter your authenticator or recovery code.
+              </p>
+            ) : null}
 
             {error ? (
               <div
@@ -340,15 +331,22 @@ export function AuthPage({ mode }: AuthPageProps) {
                     label="Password"
                     type="password"
                     placeholder="••••••••"
-                    autoComplete={isRegister ? "new-password" : "current-password"}
+                    autoComplete={
+                      isRegister ? "new-password" : "current-password"
+                    }
                     icon={LockKeyhole}
                     required
                     minLength={isRegister ? 10 : undefined}
                     maxLength={255}
-                    aria-describedby={isRegister ? "password-guidance" : undefined}
+                    aria-describedby={
+                      isRegister ? "password-guidance" : undefined
+                    }
                   />
                   {isRegister ? (
-                    <p id="password-guidance" className="-mt-2 text-xs leading-5 text-muted">
+                    <p
+                      id="password-guidance"
+                      className="-mt-2 text-xs leading-5 text-muted"
+                    >
                       Use at least 10 characters.
                     </p>
                   ) : null}
@@ -389,8 +387,8 @@ export function AuthPage({ mode }: AuthPageProps) {
             ) : null}
 
             <p className="mt-4 text-center text-xs leading-5 text-muted">
-              By {isRegister ? "creating an account" : "signing in"}, you agree to
-              the{" "}
+              By {isRegister ? "creating an account" : "signing in"}, you agree
+              to the{" "}
               <Link
                 to="/terms"
                 className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"

@@ -295,7 +295,7 @@ test("stroke joke popup respects cooldown storage", async ({ page }) => {
 test("stroke joke popup stays off excluded routes", async ({ page }) => {
   await mockPublicShell(page);
   await forceStrokeJokeRoll(page);
-  await page.goto("/login");
+  await page.goto("/rooms");
 
   await expect(page.getByLabel("thia.lol home")).toBeVisible();
   await expect(page.getByTestId("stroke-joke-popup")).toHaveCount(0);
@@ -620,7 +620,7 @@ test("mobile bottom nav stays fixed while footer reserves its clearance", async 
   await mockPublicShell(page);
   await acknowledgeCookieNotice(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/login");
+  await page.goto("/discover");
   await page.evaluate(() => {
     window.scrollTo(0, document.documentElement.scrollHeight);
   });
@@ -690,7 +690,7 @@ test("auth pages show compact brand identity without horizontal overflow", async
   for (const path of ["/login", "/register"]) {
     await page.goto(path);
 
-    await expect(page.getByTestId("auth-brand-logo-main")).toBeVisible();
+    await expect(page.getByTestId("auth-brand-logo-main")).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Terms of Service" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Privacy Policy" })).toBeVisible();
     await expect(
@@ -738,7 +738,10 @@ test("skip navigation and route changes move keyboard focus to main content", as
   await page.keyboard.press("Enter");
   await expect(page.locator("#main-content")).toBeFocused();
 
-  await page.getByRole("link", { name: "Browse rooms" }).click();
+  await page
+    .getByTestId("desktop-nav")
+    .getByRole("link", { name: "Rooms" })
+    .click();
   await expect(page).toHaveURL(/\/rooms$/);
   await expect(page.locator("#main-content")).toBeFocused();
 });
@@ -866,7 +869,7 @@ test("mobile room route uses one contextual Post action", async ({ page }) => {
 
   await expect(page.getByTestId("room-page")).toBeVisible();
   await expect(page.getByTestId("room-header")).toBeVisible();
-  await expect(page.getByTestId("room-meta")).toContainText("0 posts");
+  await expect(page.getByTestId("room-meta")).not.toContainText("posts");
   await expect(page.getByTestId("room-meta")).toContainText("1 member");
   await expect(page.getByText("No activity yet")).toHaveCount(0);
   await expect(page.getByText("No room rules have been added yet.")).toHaveCount(0);
@@ -893,7 +896,7 @@ test("chat page is honest about sign-in state", async ({ page }) => {
   await mockPublicShell(page);
   await page.goto("/chat");
 
-  await expect(page.getByRole("heading", { name: "Chat" })).toBeVisible();
+  await expect(page.getByTestId("chat-page")).toBeVisible();
   await expect(page.getByText("Sign in to see messages.")).toBeVisible();
 });
 
@@ -984,8 +987,14 @@ test("post composer submits Markdown and Spotify/YouTube music attachments", asy
 }) => {
   await mockAuthenticatedShell(page);
   let postPayload: Record<string, unknown> | undefined;
-  const testArtwork =
-    "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=";
+  const testArtwork = "https://i.scdn.co/image/test-artwork";
+
+  await page.route(testArtwork, (route) =>
+    route.fulfill({
+      contentType: "image/gif",
+      body: Buffer.from("R0lGODlhAQABAAAAACwAAAAAAQABAAA=", "base64"),
+    }),
+  );
 
   await mockMusicSuggestionRoutes(page, {
     spotifyItems: [
@@ -1565,7 +1574,7 @@ async function mockShell(
     }),
   );
 
-  await page.route("**/api/feed/discover", (route) =>
+  await page.route("**/api/feed/discover**", (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({

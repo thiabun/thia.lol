@@ -23,6 +23,10 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { cn } from "../../lib/classNames";
 import {
+  distinctContextText,
+  distinctSecondaryText,
+} from "../../lib/displayText";
+import {
   getProfileModuleDefinition,
   PROFILE_CANVAS_DESKTOP_COLUMNS,
   PROFILE_CANVAS_DESKTOP_ROWS,
@@ -101,7 +105,6 @@ type ProfileModulesSectionProps = {
   badges: UserBadge[];
   canvasGlass?: number | undefined;
   error: unknown;
-  isOwnProfile: boolean;
   layoutPreset?: ProfileLayoutPreset | undefined;
   loading: boolean;
   musicAutoplay?: ProfileMusicAutoplayRequest | undefined;
@@ -250,7 +253,6 @@ export function ProfileModulesSection({
   badges,
   canvasGlass,
   error,
-  isOwnProfile,
   layoutPreset = defaultProfileLayoutPreset,
   loading,
   musicAutoplay,
@@ -266,7 +268,7 @@ export function ProfileModulesSection({
     ? sortProfileModulesForMobileStack(availableModules)
     : sortProfileModulesForCanvas(availableModules);
 
-  if (!loading && !error && renderableModules.length === 0 && !isOwnProfile) {
+  if (!loading && !error && renderableModules.length === 0 && !editing) {
     return null;
   }
 
@@ -282,7 +284,6 @@ export function ProfileModulesSection({
           className="mb-3"
           kind="loading"
           title="Loading modules"
-          text="Loading modules."
         />
       ) : null}
 
@@ -291,7 +292,7 @@ export function ProfileModulesSection({
           className="mb-3"
           kind="error"
           title="Profile modules are not available"
-          text="The profile basics are still here. Try refreshing in a moment."
+          text="Try refreshing in a moment."
         />
       ) : null}
 
@@ -326,8 +327,7 @@ export function ProfileModulesSection({
           {!loading && !error ? (
             <CompactStateNotice
               icon={Sparkles}
-              title="Blank canvas"
-              text="Add a module when this profile needs another clear signal."
+              title="No modules"
               className="border border-dashed border-line bg-canvas/45"
             />
           ) : null}
@@ -1108,19 +1108,11 @@ function ProfileModuleContent({
   const hasDetails = presentation.showSecondaryText;
 
   if (module.type === "activity") {
-    return (
-      <p className={cn("text-sm text-muted", slim ? "truncate leading-5" : "leading-6")}>
-        Feed, replies, and rooms appear here on the public profile.
-      </p>
-    );
+    return null;
   }
 
   if (module.type === "profile_info") {
-    return (
-      <p className="text-sm leading-6 text-muted">
-        Core profile identity appears here.
-      </p>
-    );
+    return null;
   }
 
   if (!profileModuleHasContent(module, badges)) {
@@ -1708,34 +1700,34 @@ function profileModuleEmptyPrompt(type: ProfileModule["type"]): string {
   const definition = getProfileModuleDefinition(type);
 
   if (type === "links" || type === "connections") {
-    return "Select to add connections";
+    return "Add connections";
   }
 
   if (type === "about" || type === "text") {
-    return "Select to add an intro";
+    return "Add text";
   }
 
   if (type === "custom_text") {
-    return "Select to add text";
+    return "Add text";
   }
 
   if (type === "featured_badges" || type === "badge_display") {
-    return "Select to add badges";
+    return "Add badges";
   }
 
   if (definition.category === "images") {
-    return "Select to add media";
+    return "Add media";
   }
 
   if (definition.category === "video" || type === "github_repo") {
-    return "Select to add a creator link";
+    return "Add a creator link";
   }
 
   if (definition.category === "music") {
-    return "Select to add music";
+    return "Add music";
   }
 
-  return `Select to edit ${profileModuleFallbackTitle(type).toLowerCase()}`;
+  return `Edit ${profileModuleFallbackTitle(type).toLowerCase()}`;
 }
 
 type ProfileModuleConnectionLayout = {
@@ -1921,10 +1913,23 @@ function ProfileModuleStaticCard({
   const compactTile =
     micro ||
     (presentation.span.columns <= 2 && presentation.span.rows <= 2);
+  const title = module.config.label ?? fallbackLabel;
 
   if (!url) {
     return null;
   }
+
+  const secondaryText = presentation.showSecondaryText
+    ? distinctSecondaryText(
+        title,
+        module.config.platform
+          ? platformDisplayName(module.config.platform)
+          : moduleLinkPreview(url),
+      )
+    : undefined;
+  const description = presentation.showSecondaryText
+    ? distinctContextText(module.config.description, title, secondaryText)
+    : undefined;
 
   if (module.config.integration) {
     return (
@@ -1952,7 +1957,7 @@ function ProfileModuleStaticCard({
         href={url}
         rel="noopener noreferrer"
         target="_blank"
-        title={module.config.label ?? fallbackLabel}
+        title={title}
       >
         {!micro ? <span className="absolute inset-0 -z-10 bg-canvas/35" /> : null}
         <span
@@ -1970,13 +1975,11 @@ function ProfileModuleStaticCard({
               micro ? "text-xs" : "text-sm",
             )}
           >
-            {module.config.label ?? fallbackLabel}
+            {title}
           </span>
-          {presentation.showSecondaryText ? (
+          {secondaryText ? (
             <span className="block truncate text-[0.68rem] text-muted">
-              {module.config.platform
-                ? platformDisplayName(module.config.platform)
-                : moduleLinkPreview(url)}
+              {secondaryText}
             </span>
           ) : null}
         </span>
@@ -1997,16 +2000,16 @@ function ProfileModuleStaticCard({
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold text-text">
-          {module.config.label ?? fallbackLabel}
+          {title}
         </span>
-        {presentation.showSecondaryText ? (
+        {secondaryText ? (
           <span className="mt-0.5 block truncate text-xs text-muted">
-            {module.config.platform ? platformDisplayName(module.config.platform) : moduleLinkPreview(url)}
+            {secondaryText}
           </span>
         ) : null}
-        {presentation.showSecondaryText && module.config.description ? (
+        {description ? (
           <span className="mt-1 line-clamp-2 block text-sm leading-5 text-muted">
-            {module.config.description}
+            {description}
           </span>
         ) : null}
       </span>
@@ -2072,8 +2075,8 @@ function UploadedAudioPlayer({
   const compactPlayer = profilePresentationIsCompact(presentation.tier);
   const title = audio.title ?? module.config.label ?? fallbackLabel;
   const subtitle = presentation.showSecondaryText
-    ? module.config.description ?? null
-    : null;
+    ? distinctSecondaryText(title, module.config.description)
+    : undefined;
   const progressPercent =
     duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0;
   const layout = profileMusicPlayerLayout(presentation);
@@ -2183,7 +2186,7 @@ function UploadedAudioPlayer({
       showOpenLink={!compactPlayer}
       showSubtitle={presentation.showSecondaryText}
       statusLabel={playing ? "Playing" : "Ready"}
-      subtitle={subtitle}
+      subtitle={subtitle ?? null}
       testIdPrefix="profile-uploaded-audio"
       title={title}
     >
@@ -2233,8 +2236,21 @@ function MusicPlaylistPlayer({
   const metadata = integration?.metadata;
   const title = metadata?.title ?? module.config.label ?? fallbackLabel;
   const subtitle =
-    metadata?.subtitle ??
-    (module.config.sourceMode === "upload" ? "Uploaded playlist" : "Playlist");
+    distinctSecondaryText(title, metadata?.subtitle) ??
+    distinctSecondaryText(
+      title,
+      integration
+        ? platformDisplayName(integration.provider)
+        : module.config.sourceMode === "upload"
+          ? "Uploaded"
+          : undefined,
+    );
+  const playlistSecondaryText = [
+    subtitle,
+    tracks.length > 0 ? `${tracks.length} ${tracks.length === 1 ? "song" : "songs"}` : undefined,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" · ");
   const artworkUrl = metadata?.imageUrl ?? null;
   const spotifyUri =
     integration?.provider === "spotify" && integration.resourceType === "playlist"
@@ -2533,10 +2549,9 @@ function MusicPlaylistPlayer({
               >
                 {title}
               </span>
-              {presentation.showSecondaryText ? (
+              {presentation.showSecondaryText && playlistSecondaryText ? (
                 <span className="mt-0.5 block truncate text-xs leading-5 text-muted">
-                  {subtitle}
-                  {tracks.length > 0 ? ` · ${tracks.length} songs` : ""}
+                  {playlistSecondaryText}
                 </span>
               ) : null}
             </div>
@@ -2692,7 +2707,7 @@ function ProfileIntegrationRichCard({
   const captureMode = isProfileShareCaptureMode();
   const metadata = integration.metadata;
   const title = metadata.title ?? module.config.label ?? fallbackLabel;
-  const subtitle = integrationLabel(integration);
+  const subtitle = distinctSecondaryText(title, integrationLabel(integration));
   const fetchedAt =
     integration.apiBacked && (metadata.live || metadata.recentLabel)
       ? metadata.liveFetchedAt ?? metadata.recentFetchedAt
@@ -2846,7 +2861,7 @@ function ProfileIntegrationRichCard({
           >
             {title}
           </span>
-          {presentation.showSecondaryText ? (
+          {presentation.showSecondaryText && subtitle ? (
             <span className={cn("block truncate text-[0.68rem]", compactMutedTextClass)}>
               {subtitle}
             </span>
@@ -3057,10 +3072,13 @@ function ProfileIntegrationRichCard({
           <span className="block truncate text-sm font-semibold text-text">
             {title}
           </span>
-          <span className="mt-0.5 block truncate text-xs text-muted">
-            {subtitle}
-            {fetchedAt ? ` · ${formatIntegrationAge(fetchedAt)}` : ""}
-          </span>
+          {subtitle || fetchedAt ? (
+            <span className="mt-0.5 block truncate text-xs text-muted">
+              {subtitle}
+              {subtitle && fetchedAt ? " · " : ""}
+              {fetchedAt ? formatIntegrationAge(fetchedAt) : ""}
+            </span>
+          ) : null}
           {presentation.showSecondaryText && metadata.description ? (
             <span className="mt-1 line-clamp-2 block text-sm leading-5 text-muted">
               {metadata.description}
@@ -3236,9 +3254,6 @@ function TwitchOfflineSurface({
           <Radio aria-hidden="true" size={20} />
         </span>
         <p className="mt-3 text-base font-semibold">{title} is offline</p>
-        <p className="mt-1 text-sm leading-5 text-muted">
-          The player will return here when the channel is live.
-        </p>
         <a
           className="app-control mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-control border border-line bg-surface px-3 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           href={sourceUrl}
@@ -3264,6 +3279,8 @@ function ProfileGenericEmbedCaptureSurface({
   label: string;
   provider: ProfileIntegrationCard["provider"];
 }) {
+  const providerLabel = distinctSecondaryText(label, platformDisplayName(provider));
+
   return (
     <div
       aria-label={`${label} static preview`}
@@ -3289,9 +3306,11 @@ function ProfileGenericEmbedCaptureSurface({
       )}
       <span className="min-w-0">
         <span className="block truncate text-sm font-semibold">{label}</span>
-        <span className="mt-1 block text-xs font-medium text-muted">
-          {platformDisplayName(provider)}
-        </span>
+        {providerLabel ? (
+          <span className="mt-1 block text-xs font-medium text-muted">
+            {providerLabel}
+          </span>
+        ) : null}
       </span>
     </div>
   );
@@ -3398,7 +3417,10 @@ function ProfileIntegrationArtistCard({
     presentation.tier === "showcase" ||
     presentation.span.rows >= 4;
   const title = metadata.title ?? module.config.label ?? fallbackLabel;
-  const subtitle = metadata.subtitle ?? platformDisplayName(integration.provider);
+  const subtitle = distinctSecondaryText(
+    title,
+    metadata.subtitle ?? platformDisplayName(integration.provider),
+  );
   const description = metadata.description ?? module.config.description;
   const stats = profileIntegrationArtistStats(integration);
   const visibleStats = compact ? [] : stats.slice(0, spacious ? 4 : 3);
@@ -3438,7 +3460,7 @@ function ProfileIntegrationArtistCard({
           >
             {title}
           </span>
-          {presentation.span.columns >= 5 ? (
+          {presentation.span.columns >= 5 && subtitle ? (
             <span className="block truncate text-xs font-medium text-white/78">
               {subtitle}
             </span>
@@ -3499,14 +3521,16 @@ function ProfileIntegrationArtistCard({
             >
               {title}
             </span>
-            <span
-              className={cn(
-                "mt-0.5 block truncate font-medium text-white/78",
-                compact ? "text-xs" : "text-sm",
-              )}
-            >
-              {subtitle}
-            </span>
+            {subtitle ? (
+              <span
+                className={cn(
+                  "mt-0.5 block truncate font-medium text-white/78",
+                  compact ? "text-xs" : "text-sm",
+                )}
+              >
+                {subtitle}
+              </span>
+            ) : null}
           </span>
           <span
             className={cn(
@@ -3595,7 +3619,7 @@ function YouTubeMusicPlayer({
   const [playerVersion, setPlayerVersion] = useState(0);
   const metadata = integration.metadata;
   const title = metadata.title ?? module.config.label ?? fallbackLabel;
-  const subtitle = metadata.subtitle ?? "YouTube Music";
+  const subtitle = distinctSecondaryText(title, metadata.subtitle);
   const description = metadata.description ?? module.config.description;
   const presentation = profileModulePresentation(size);
   const microPlayer = presentation.tier === "micro";
@@ -3714,7 +3738,7 @@ function YouTubeMusicPlayer({
             >
               {title}
             </span>
-            {presentation.showSecondaryText ? (
+            {presentation.showSecondaryText && subtitle ? (
               <span className="mt-0.5 block truncate text-xs text-muted">
                 {subtitle}
               </span>
@@ -3871,7 +3895,7 @@ function SpotifyMusicPlayer({
   const [fallback, setFallback] = useState(false);
   const metadata = integration.metadata;
   const title = metadata.title ?? module.config.label ?? fallbackLabel;
-  const subtitle = metadata.subtitle ?? platformDisplayName(integration.provider);
+  const subtitle = distinctSecondaryText(title, metadata.subtitle);
   const description = metadata.description ?? module.config.description;
   const fetchedAt =
     integration.apiBacked && (metadata.live || metadata.recentLabel)
@@ -4128,10 +4152,11 @@ function SpotifyMusicPlayer({
             >
               {title}
             </span>
-            {presentation.showSecondaryText ? (
+            {presentation.showSecondaryText && (subtitle || fetchedAt) ? (
               <span className="mt-0.5 block truncate text-xs text-muted">
                 {subtitle}
-                {fetchedAt ? ` · ${formatIntegrationAge(fetchedAt)}` : ""}
+                {subtitle && fetchedAt ? " · " : ""}
+                {fetchedAt ? formatIntegrationAge(fetchedAt) : ""}
               </span>
             ) : null}
             {presentation.showDescription && description ? (

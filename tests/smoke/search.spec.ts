@@ -5,8 +5,8 @@ test("/search renders an empty query state", async ({ page }) => {
   await page.goto("/search");
 
   await expect(page.getByTestId("search-page")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Search", exact: true })).toBeVisible();
   await expect(page.getByLabel("Search thia.lol")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Search thia.lol" })).toHaveCount(0);
   await expect(page.getByText("Start with a name or room")).toHaveCount(0);
   await expect(page.getByText("Search uses public profile and room data only.")).toHaveCount(0);
 });
@@ -40,32 +40,7 @@ test("/search shows successful profile, room, and post results", async ({ page }
             bioSnippet: "Founder profile for thia.lol.",
           },
         ],
-        rooms: [
-          {
-            id: 2,
-            slug: "general",
-            name: "General",
-            summary: "Open conversation for public testing.",
-            description: "Open conversation for public testing.",
-            mood: "",
-            members: 5,
-            memberCount: 5,
-            live: false,
-            theme: "glinda",
-            themeConfig: { mode: "preset", preset: "glinda" },
-            iconUrl: null,
-            bannerUrl: null,
-            rules: "",
-            visibility: "public",
-            owner: null,
-            joinedByMe: false,
-            myRoomRole: null,
-            postCount: 4,
-            latestActivityAt: null,
-            createdAt: "2026-06-10 00:00:00",
-            updatedAt: "2026-06-10 00:00:00",
-          },
-        ],
+        rooms: [searchRoomFixture()],
         posts: [
           {
             id: 9,
@@ -96,7 +71,7 @@ test("/search shows successful profile, room, and post results", async ({ page }
   await expect(page.getByTestId("search-profile-result")).toHaveAttribute("href", "/@thia");
   await expect(page.getByRole("heading", { name: "Rooms" })).toBeVisible();
   await expect(page.getByTestId("search-room-result")).toHaveCount(1);
-  await expect(page.getByRole("link", { name: /General \/general/ })).toHaveAttribute(
+  await expect(page.getByTestId("search-room-result")).toHaveAttribute(
     "href",
     "/rooms/general",
   );
@@ -106,6 +81,36 @@ test("/search shows successful profile, room, and post results", async ({ page }
     "/@thia/posts/pabcdef12345",
   );
   await expect(page.getByText("A searchable post about tiny social spaces.")).toBeVisible();
+});
+
+test("/search suppresses room metadata that repeats its name", async ({ page }) => {
+  await mockShellRequests(page);
+  await mockSearch(page, {
+    ok: true,
+    data: {
+      query: "dakota",
+      minQueryLength: 2,
+      results: {
+        profiles: [],
+        rooms: [
+          searchRoomFixture({
+            name: "dakota",
+            slug: "dakota",
+            summary: "dakota",
+            description: "dakota",
+          }),
+        ],
+        posts: [],
+      },
+    },
+  });
+
+  await page.goto("/search?q=dakota");
+
+  const room = page.getByTestId("search-room-result");
+  await expect(room.getByRole("heading", { name: "dakota" })).toBeVisible();
+  await expect(room.getByText("/dakota", { exact: true })).toHaveCount(0);
+  await expect(room.getByText("dakota", { exact: true })).toHaveCount(1);
 });
 
 test("/search keeps typing local without reopening the full page loader", async ({
@@ -248,4 +253,32 @@ async function mockSearch(page: Page, body: unknown) {
       body: JSON.stringify(body),
     });
   });
+}
+
+function searchRoomFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 2,
+    slug: "general",
+    name: "General",
+    summary: "Open conversation for public testing.",
+    description: "Open conversation for public testing.",
+    mood: "",
+    members: 5,
+    memberCount: 5,
+    live: false,
+    theme: "glinda",
+    themeConfig: { mode: "preset", preset: "glinda" },
+    iconUrl: null,
+    bannerUrl: null,
+    rules: "",
+    visibility: "public",
+    owner: null,
+    joinedByMe: false,
+    myRoomRole: null,
+    postCount: 4,
+    latestActivityAt: null,
+    createdAt: "2026-06-10 00:00:00",
+    updatedAt: "2026-06-10 00:00:00",
+    ...overrides,
+  };
 }

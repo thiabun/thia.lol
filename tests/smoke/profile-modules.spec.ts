@@ -703,7 +703,7 @@ test("wide short activity modules render compact feed cards instead of text chip
   await expect(cards.first()).toHaveAttribute("href", "/@thia/posts/reply-901");
   await expect(cards.first()).toContainText("Thia");
   await expect(cards.first()).toContainText("@thia");
-  await expect(cards.first()).toContainText("Reply");
+  await expect(cards.first()).not.toContainText("Reply");
   await expect(cards.first()).toContainText("Crazy? I know someone");
   await expect(
     activity.locator(":scope > span").filter({
@@ -1067,7 +1067,7 @@ test("video background and allowlisted rich integrations render safely", async (
     "https://i.scdn.co/image/focus-track",
   );
   await expect(page.getByText("Recently updated · Spotify")).toBeVisible();
-  await expect(page.getByText("Public repository metadata.")).toBeVisible();
+  await expect(page.getByText("Public repository metadata.")).toHaveCount(0);
   await expect(page.getByTestId("profile-integration-embed-github")).toHaveCount(0);
 });
 
@@ -1357,7 +1357,7 @@ test("roomy artist cards show listener stats without empty side panels", async (
     modules: [
       withAuditLayout(
         spotifyArtistModule({ id: 67, listeners: 84000000, position: 1 }),
-        "6x4",
+        "4x4",
         1,
       ),
     ],
@@ -1366,7 +1366,7 @@ test("roomy artist cards show listener stats without empty side panels", async (
   await page.goto("/@thia");
 
   const module = page.getByTestId("profile-grid-module-spotify_artist");
-  await expect(module).toHaveAttribute("data-profile-grid-size", "6x4");
+  await expect(module).toHaveAttribute("data-profile-grid-size", "4x4");
   await expect(module.getByTestId("profile-integration-artist-card")).toHaveAttribute(
     "data-profile-artist-card-layout",
     "spacious",
@@ -1483,7 +1483,7 @@ test("desktop module spans render with square-cell geometry", async ({ page }) =
   );
 });
 
-test("anonymous visitor can skip Spotify connect before profile music starts", async ({
+test("anonymous visitor consents to profile music without a connection prompt", async ({
   page,
 }) => {
   await mockSpotifyIframeApi(page);
@@ -1494,20 +1494,18 @@ test("anonymous visitor can skip Spotify connect before profile music starts", a
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  const prompt = page.getByTestId("profile-spotify-entry-prompt");
+  const prompt = page.getByTestId("profile-music-continue-overlay");
   await expect(prompt).toBeVisible();
   await expect(page.getByTestId("profile-entry-gate")).toHaveAttribute(
     "data-profile-entry-gate-mode",
-    "spotify-signin",
+    "music",
   );
-  await expect(page.getByTestId("profile-spotify-entry-signin-link")).toHaveAttribute(
-    "href",
-    "/login?returnTo=%2F%40thia",
-  );
+  await expect(page.getByTestId("profile-spotify-entry-prompt")).toHaveCount(0);
+  await expect(page.getByTestId("profile-spotify-entry-signin-link")).toHaveCount(0);
   await expectSpotifyCustomPlayer(page);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(0);
 
-  const button = page.getByTestId("profile-spotify-entry-skip-button");
+  const button = page.getByTestId("profile-music-continue-button");
   await button.focus();
   await page.keyboard.press("Enter");
 
@@ -1518,9 +1516,6 @@ test("anonymous visitor can skip Spotify connect before profile music starts", a
     window.localStorage.getItem("thia.profile.musicAutoplayConsent.v1:1"),
   );
   const cookies = await page.context().cookies();
-  const spotifySkip = await page.evaluate(() =>
-    window.localStorage.getItem("thia.profile.spotifyConnectPromptSkip.v1:1"),
-  );
 
   expect(stored).not.toBeNull();
   expect(cookies).toContainEqual(
@@ -1534,14 +1529,9 @@ test("anonymous visitor can skip Spotify connect before profile music starts", a
     profileId: 1,
     provider: "spotify",
   });
-  expect(spotifySkip).not.toBeNull();
-  expect(JSON.parse(spotifySkip ?? "{}")).toMatchObject({
-    handle: "thia",
-    profileId: 1,
-  });
 });
 
-test("Spotify entry skip ignores rapid duplicate clicks", async ({
+test("profile music consent ignores rapid duplicate clicks", async ({
   page,
 }) => {
   await mockSpotifyIframeApi(page);
@@ -1552,27 +1542,19 @@ test("Spotify entry skip ignores rapid duplicate clicks", async ({
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  const button = page.getByTestId("profile-spotify-entry-skip-button");
+  const button = page.getByTestId("profile-music-continue-button");
   await expect(button).toBeVisible();
 
   await button.dblclick();
 
-  await expect(page.getByTestId("profile-spotify-entry-prompt")).toHaveCount(0);
+  await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(1);
 });
 
-test("stored Spotify entry skip and music consent skip the entry gate", async ({
+test("stored music consent skips the entry gate", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem(
-      "thia.profile.spotifyConnectPromptSkip.v1:1",
-      JSON.stringify({
-        handle: "thia",
-        profileId: 1,
-        skippedAt: "2026-06-17T00:00:00.000Z",
-      }),
-    );
     window.localStorage.setItem(
       "thia.profile.musicAutoplayConsent.v1:1",
       JSON.stringify({
@@ -1599,7 +1581,7 @@ test("stored Spotify entry skip and music consent skip the entry gate", async ({
   await expectSpotifyProgress(page, { max: 38, min: 33 }, /1:0\d \/ 3:00/);
 });
 
-test("invalid Spotify music consent falls back to the Spotify entry prompt", async ({
+test("invalid Spotify music consent falls back to the music consent prompt", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -1613,11 +1595,12 @@ test("invalid Spotify music consent falls back to the Spotify entry prompt", asy
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await expect(page.getByTestId("profile-spotify-entry-prompt")).toBeVisible();
+  await expect(page.getByTestId("profile-music-continue-overlay")).toBeVisible();
+  await expect(page.getByTestId("profile-spotify-entry-prompt")).toHaveCount(0);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(0);
 });
 
-test("stored Spotify entry skip suppresses the prompt on revisit", async ({
+test("Spotify artist modules do not block profile entry", async ({
   page,
 }) => {
   await mockProfileModules(page, {
@@ -1627,26 +1610,11 @@ test("stored Spotify entry skip suppresses the prompt on revisit", async ({
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await expect(page.getByTestId("profile-spotify-entry-prompt")).toBeVisible();
-  await page.getByTestId("profile-spotify-entry-skip-button").click();
-  await expect(page.getByTestId("profile-entry-gate")).toHaveCount(0);
-
-  const spotifySkip = await page.evaluate(() =>
-    window.localStorage.getItem("thia.profile.spotifyConnectPromptSkip.v1:1"),
-  );
-
-  expect(spotifySkip).not.toBeNull();
-  expect(JSON.parse(spotifySkip ?? "{}")).toMatchObject({
-    handle: "thia",
-    profileId: 1,
-  });
-
-  await page.goto("/@thia");
   await expect(page.getByTestId("profile-entry-gate")).toHaveCount(0);
   await expect(page.getByTestId("profile-spotify-entry-prompt")).toHaveCount(0);
 });
 
-test("signed-in disconnected visitors can start Spotify OAuth from profile entry", async ({
+test("signed-in disconnected visitors are not interrupted by Spotify OAuth", async ({
   page,
 }) => {
   let oauthStartPayload: Record<string, unknown> | undefined;
@@ -1691,16 +1659,13 @@ test("signed-in disconnected visitors can start Spotify OAuth from profile entry
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await expect(page.getByTestId("profile-spotify-entry-prompt")).toBeVisible();
+  await expect(page.getByTestId("profile-spotify-entry-prompt")).toHaveCount(0);
+  await expect(page.getByTestId("profile-music-continue-overlay")).toBeVisible();
   await expect(page.getByTestId("profile-entry-gate")).toHaveAttribute(
     "data-profile-entry-gate-mode",
-    "spotify-connect",
+    "music",
   );
-  await page.getByTestId("profile-spotify-entry-connect-button").click();
-
-  await expect
-    .poll(() => oauthStartPayload?.redirectPath)
-    .toBe("/@thia");
+  expect(oauthStartPayload).toBeUndefined();
 });
 
 test("connected Spotify visitors do not see the OAuth prompt", async ({
@@ -1769,7 +1734,7 @@ test("profile music continue overlay excludes owners and non-Spotify embeds", as
   await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
 });
 
-test("Spotify entry prompt can appear even when autoplay follows the first music module", async ({
+test("later Spotify modules do not add an entry prompt", async ({
   page,
 }) => {
   await mockSpotifyIframeApi(page);
@@ -1783,9 +1748,8 @@ test("Spotify entry prompt can appear even when autoplay follows the first music
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await expect(page.getByTestId("profile-spotify-entry-prompt")).toBeVisible();
+  await expect(page.getByTestId("profile-spotify-entry-prompt")).toHaveCount(0);
   await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
-  await page.getByTestId("profile-spotify-entry-skip-button").click();
   await expect(page.getByTestId("profile-entry-gate")).toHaveCount(0);
   await expectSpotifyCustomPlayer(page);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(0);
@@ -1800,7 +1764,7 @@ test("Spotify playback failure still opens the profile", async ({ page }) => {
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page.getByTestId("profile-spotify-entry-skip-button").click();
+  await page.getByTestId("profile-music-continue-button").click();
 
   await expect(page.getByTestId("profile-entry-gate")).toHaveCount(0);
   await expectSpotifyCustomPlayer(page);
@@ -2843,7 +2807,7 @@ test("public profile keeps its identity canvas visible while modules load", asyn
   await page.goto("/@thia");
 
   await expect(
-    page.getByText("Loading modules.", { exact: true }),
+    page.getByRole("heading", { name: "Loading modules" }),
   ).toBeVisible();
   await expect(
     page.getByTestId("profile-grid-module-profile_info"),
@@ -2851,9 +2815,9 @@ test("public profile keeps its identity canvas visible while modules load", asyn
 
   modulesGate.resolve();
 
-  await expect(page.getByText("Loading modules.", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole("heading", { name: "Loading modules" }),
+  ).toHaveCount(0);
   await expect(page.getByText("Arrives after the profile.")).toBeVisible();
 });
 
@@ -3465,7 +3429,7 @@ test("commit conflict refreshes from published modules before retrying", async (
   await expect(page.getByTestId("profile-canvas-draft-conflict")).toHaveCount(0);
   await expect(page.getByTestId("profile-canvas-save-button")).toBeEnabled();
   await expect(blankModule).toHaveCount(0);
-  await expect(page.getByText("Remote published replacement.")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-module-41")).toBeVisible();
   expect(rebasePayloads).toHaveLength(1);
   expect(rebasePayloads[0]?.expectedRevision).toEqual(expect.any(String));
 
@@ -3509,7 +3473,7 @@ test("autosave conflict preserves and reloads a newer remote draft", async ({
 
   await page.getByTestId("profile-canvas-reload-conflict").click();
   await expect(page.getByTestId("profile-canvas-draft-conflict")).toHaveCount(0);
-  await expect(page.getByText("Newer remote draft.")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-module-42")).toBeVisible();
   await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
     "data-profile-background-blur",
     "none",
@@ -3575,7 +3539,7 @@ test("conflict refresh failure stays visible and can be retried", async ({
 
   await page.getByTestId("profile-canvas-reload-conflict").click();
   await expect(page.getByTestId("profile-canvas-draft-conflict")).toHaveCount(0);
-  await expect(page.getByText("Retry recovery.")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-module-1")).toBeVisible();
 });
 
 test("direct canvas point selection creates a draft module through picker and settings", async ({
@@ -3619,7 +3583,7 @@ test("direct canvas point selection creates a draft module through picker and se
   const selectionPreview = page.getByTestId("profile-canvas-selection-preview");
   await expect(selectionPreview).toBeVisible();
   await expect(page.getByTestId("profile-canvas-selection-examples")).toBeVisible();
-  await expect(page.getByTestId("profile-canvas-selection-examples")).toContainText(
+  await expect(page.getByTestId("profile-canvas-selection-examples")).not.toContainText(
     "Fits 3x2",
   );
   await expect(page.getByTestId("profile-canvas-selection-example-music")).toBeVisible();
@@ -3665,7 +3629,7 @@ test("direct canvas point selection creates a draft module through picker and se
 
   const blankModule = page.locator('[data-testid^="profile-canvas-add-module-"]');
   await expect(blankModule).toBeVisible();
-  await expect(blankModule).toContainText("Click to add module");
+  await expect(blankModule).toContainText("Add module");
   await expect(
     blankModule.evaluate((element) => window.getComputedStyle(element).filter),
   ).resolves.toBe("none");
@@ -3706,12 +3670,16 @@ test("direct canvas point selection creates a draft module through picker and se
   await expect(
     pickedContent.evaluate((element) => window.getComputedStyle(element).filter),
   ).resolves.toBe("none");
+  const pickedContentTestId = await pickedContent.getAttribute("data-testid");
+  expect(pickedContentTestId).toMatch(/^profile-canvas-module-content-/);
+  const pickedModuleId = pickedContentTestId!.replace(
+    "profile-canvas-module-content-",
+    "",
+  );
   await page
     .getByTestId("profile-module-settings-body")
     .fill("Canvas note configured from settings.");
-  const configuredContent = page.getByTestId(
-    "profile-canvas-module-content-9001",
-  );
+  const configuredContent = page.getByTestId(pickedContentTestId!);
   await expect(configuredContent).toBeVisible();
   await expect(configuredContent).toHaveAttribute(
     "data-profile-canvas-module-configured",
@@ -3747,7 +3715,9 @@ test("direct canvas point selection creates a draft module through picker and se
       .getByTestId("profile-canvas-direct-grid")
       .locator("iframe, video, audio"),
   ).toHaveCount(0);
-  const configuredModuleShell = page.getByTestId("profile-canvas-module-9001");
+  const configuredModuleShell = page.getByTestId(
+    `profile-canvas-module-${pickedModuleId}`,
+  );
   await expect(configuredModuleShell).toHaveAttribute(
     "data-profile-grid-layout-animation",
     "false",
@@ -3763,9 +3733,9 @@ test("direct canvas point selection creates a draft module through picker and se
   await expect(configuredPinButton).toHaveAttribute("aria-pressed", "false");
   await expect(configuredRemoveButton).toBeVisible();
   await expect(
-    page
-      .getByTestId("profile-canvas-module-9001")
-      .locator('[data-testid^="profile-canvas-remove-module-"]'),
+    configuredModuleShell.locator(
+      '[data-testid^="profile-canvas-remove-module-"]',
+    ),
   ).toHaveCount(0);
   await expect(
     page.getByTestId("profile-module-settings").getByRole("button", { name: /^Pin$/ }),
@@ -4639,7 +4609,10 @@ test("YouTube module settings prompt for provider connection", async ({ page }) 
 
   const settings = page.getByTestId("profile-module-settings");
   await expect(settings).toBeVisible();
-  await expect(settings).toContainText("Connect YouTube");
+  await expect(settings).toContainText(
+    "Authenticated YouTube data requires a connection.",
+  );
+  await expect(settings).not.toContainText("Connect YouTube");
   await expect(settings.getByTestId("profile-integration-connect-youtube")).toBeVisible();
   await expect(settings.getByTestId("profile-module-settings-url")).toBeVisible();
 
@@ -6472,9 +6445,7 @@ test.skip("obsolete blank profile details panel coverage", async ({ page }) => {
   await page.getByTestId("profile-edit-button").click();
 
   await expect(page.getByTestId("profile-editor")).toBeVisible();
-  await expect(
-    page.getByText("Edit the profile identity and media shown publicly."),
-  ).toBeVisible();
+  await expect(page.getByText("Edit the profile identity and media shown publicly.")).toHaveCount(0);
   await expect(page.getByTestId("profile-selected-module-popover")).toHaveCount(0);
   await expect(page.getByTestId("profile-info-display-name-input")).toBeVisible();
   await expect(page.getByTestId("profile-info-bio-input")).toBeVisible();
@@ -6570,7 +6541,7 @@ test.skip("retired module content popovers stay backend-only during transition",
   ).toBeVisible();
   await expect(page.getByTestId("profile-selected-module-popover")).toBeVisible();
   await expect(page.getByTestId("profile-grid-module-links")).toContainText(
-    "Select to add connections",
+    "Add connections",
   );
   await expect(page.getByTestId("profile-canvas-size-3x2")).toHaveText("Showcase");
   await page.getByTestId("profile-canvas-size-3x2").click();
@@ -6752,7 +6723,7 @@ test.skip("retired module add and delete UI stays backend-only during transition
   await expect(page.getByTestId("profile-selected-module-popover")).toBeVisible();
   await expect(textModule.getByTestId("profile-selected-module-controls")).toBeVisible();
   await page.getByTestId("profile-module-grid").dispatchEvent("click");
-  await expect(textModule.getByText("Select to add text")).toBeVisible();
+  await expect(textModule.getByText("Add text")).toBeVisible();
   await textModule.click();
   await expect(textModule.getByTestId("profile-selected-module-controls")).toBeVisible();
   await textModule.getByTestId("profile-module-body-input").fill("Canvas-added note");
@@ -7769,7 +7740,7 @@ test("owner customization uses the direct canvas editor instead of the retired m
   await expect(page.getByRole("button", { name: "Customize layout" })).toHaveCount(0);
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
   await expect(page.getByTestId("profile-module-editor")).toHaveCount(0);
-  await expect(page.getByText("Saved profile note")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-module-1")).toBeVisible();
 });
 
 test("mobile profile modules stay stable with compact profile editing", async ({ page }) => {
@@ -10324,7 +10295,7 @@ async function expectAuditModuleContent(
 
   if (type === "links" || type === "connections") {
     await expect(
-      module.locator('[title*="Long connection label 1"]'),
+      module.locator('a[href="https://example.com/connection-1"]'),
     ).toBeVisible();
     return;
   }

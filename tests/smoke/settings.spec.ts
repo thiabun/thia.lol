@@ -7,7 +7,7 @@ test("settings separates readouts and confirms bulk content deletion", async ({
 
   await page.goto("/settings");
 
-  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(page.getByTestId("settings-page")).toBeVisible();
   await expect(page.getByTestId("page-loading-overlay")).toBeHidden({
     timeout: 5000,
   });
@@ -33,19 +33,30 @@ test("settings separates readouts and confirms bulk content deletion", async ({
   await expect(page.getByText("5/5 enabled")).toHaveCount(0);
 
   const connections = page.locator("#connections");
-  await expect(connections.getByRole("heading", { name: "Connections" })).toBeVisible();
-  await expect(connections).toContainText("Spotify, YouTube, Twitch, and GitHub");
-  await expect(connections.getByTestId("settings-manage-connections")).toHaveAttribute(
-    "href",
-    "/settings/connections",
+  await expect(
+    connections.getByRole("heading", { name: "Connections" }),
+  ).toHaveCount(0);
+  await expect(
+    connections.getByText("Provider accounts", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Viewer · @viewer", { exact: true })).toHaveCount(
+    0,
   );
+  await expect(page.getByText("Linked accounts", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(
+    connections.getByTestId("settings-manage-connections"),
+  ).toHaveAttribute("href", "/settings/connections");
 
   const content = page.locator("#content");
   await expect(content).toContainText("Posts and replies");
   await expect(content).toContainText("First post to delete.");
   await expect(content).not.toContainText("Bulk delete");
   await expect(content).not.toContainText("Selected content");
-  await expect(content.getByRole("button", { name: "Delete shown" })).toHaveCount(0);
+  await expect(
+    content.getByRole("button", { name: "Delete shown" }),
+  ).toHaveCount(0);
 
   const danger = page.locator("#danger");
   const deleteAllButton = danger.getByRole("button", {
