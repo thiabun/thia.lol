@@ -849,6 +849,15 @@ test("signed-in auth routes show the current Display Name and Handle", async ({
     await expect(page.getByRole("heading", { name: "You’re already signed in" })).toBeVisible();
     await expect(page.getByTestId("identity-preview-display-name")).toHaveText("Viewer");
     await expect(page.getByTestId("identity-preview-handle")).toHaveText("@viewer");
+
+    for (const action of [
+      page.getByRole("link", { name: "View profile" }),
+      page.getByRole("link", { name: "Go home" }),
+      page.getByRole("button", { name: "Log out" }),
+    ]) {
+      const box = await action.boundingBox();
+      expect(box?.height).toBeGreaterThanOrEqual(44);
+    }
   }
 });
 

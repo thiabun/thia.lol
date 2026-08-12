@@ -789,13 +789,13 @@ function SignedInAuthState({
             label="Current account"
           />
           <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-            <ButtonLink to={`/@${handle}`} variant="primary">
+            <ButtonLink className="min-h-12" to={`/@${handle}`} variant="primary">
               View profile
             </ButtonLink>
-            <ButtonLink to="/" variant="secondary">
+            <ButtonLink className="min-h-12" to="/" variant="secondary">
               Go home
             </ButtonLink>
-            <Button type="button" variant="ghost" onClick={onLogout}>
+            <Button className="min-h-12" type="button" variant="ghost" onClick={onLogout}>
               Log out
             </Button>
           </div>
