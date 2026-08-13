@@ -1661,6 +1661,7 @@ export function ProfileDirectCanvasEditor({
         onModuleVideoUpload={onModuleVideoUpload}
         onProfileImageUpload={onImageUpload}
         onProfileDraftChange={onProfileDraftChange}
+        onResolveIntegrationMetadata={onResolveIntegrationMetadata}
         onUpdateConfig={handleModuleConfig}
       />
     ) : (
@@ -2013,6 +2014,7 @@ export function ProfileDirectCanvasEditor({
           onModuleVideoUpload={onModuleVideoUpload}
           onProfileImageUpload={onImageUpload}
           onProfileDraftChange={onProfileDraftChange}
+          onResolveIntegrationMetadata={onResolveIntegrationMetadata}
           onUpdateConfig={handleModuleConfig}
         />
         <ProfileModuleRemovalConfirmation
@@ -3388,6 +3390,7 @@ function ModuleSettingsModal({
   onProfileImageUpload,
   onProfileDraftChange,
   onRemove,
+  onResolveIntegrationMetadata,
   onResize,
   onTogglePin,
   onUpdateConfig,
@@ -3410,6 +3413,10 @@ function ModuleSettingsModal({
   ) => void;
   onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
   onRemove: (module: ProfileModule) => void;
+  onResolveIntegrationMetadata: (input: {
+    provider?: ProfileIntegrationProvider;
+    url: string;
+  }) => Promise<ProfileIntegrationCard>;
   onResize: (module: ProfileModule, size: ProfileGridModuleSize) => void;
   onTogglePin: (module: ProfileModule) => void;
   onUpdateConfig: (module: ProfileModule, config: ProfileModule["config"],
@@ -3434,6 +3441,10 @@ function ModuleSettingsModal({
   const providerLabel = provider ? profileCanvasProviderLabel(provider) : undefined;
   const [moduleAudioUploading, setModuleAudioUploading] = useState(false);
   const [moduleAudioError, setModuleAudioError] = useState<string | undefined>();
+  const [musicUrlValue, setMusicUrlValue] = useState(module?.config.url ?? "");
+  const [musicUrlResolving, setMusicUrlResolving] = useState(false);
+  const [musicUrlError, setMusicUrlError] = useState<string | undefined>();
+  const musicUrlResolveSequenceRef = useRef(0);
   const [moduleImageUploading, setModuleImageUploading] = useState(false);
   const [moduleImageError, setModuleImageError] = useState<string | undefined>();
   const [moduleVideoUploading, setModuleVideoUploading] = useState(false);
@@ -3562,6 +3573,98 @@ function ModuleSettingsModal({
     );
   }
 
+  async function resolveMusicUrl(value: string) {
+    if (!module || !definition || definition.category !== "music") {
+      return;
+    }
+
+    const trimmed = value.trim();
+    const resolveSequence = musicUrlResolveSequenceRef.current + 1;
+    musicUrlResolveSequenceRef.current = resolveSequence;
+    setMusicUrlValue(trimmed);
+    setMusicUrlError(undefined);
+
+    if (!trimmed) {
+      setMusicUrlResolving(false);
+      const hasUploadedAudio = Boolean(module.config.audio);
+      const hasUploadedTracks = (module.config.tracks?.length ?? 0) > 0;
+      const hasUpload = hasUploadedAudio || hasUploadedTracks;
+
+      updateModuleConfig(
+        configWithContent(
+          hasUpload
+            ? {
+                platform: "custom",
+                sourceMode: "upload",
+              }
+            : {},
+          hasUpload,
+          hasUpload
+            ? ["url", "integration"]
+            : ["url", "integration", "platform", "sourceMode"],
+        ),
+      );
+      return;
+    }
+
+    setMusicUrlResolving(true);
+
+    try {
+      const card = await onResolveIntegrationMetadata({ url: trimmed });
+
+      if (musicUrlResolveSequenceRef.current !== resolveSequence) {
+        return;
+      }
+
+      if (
+        card.provider !== "spotify" &&
+        card.provider !== "apple_music" &&
+        card.provider !== "youtube"
+      ) {
+        throw new Error(
+          "Use a Spotify, Apple Music, or YouTube music link.",
+        );
+      }
+
+      if (module.type === "music_playlist" && card.resourceType !== "playlist") {
+        throw new Error(
+          "Use a Spotify, Apple Music, or YouTube playlist link.",
+        );
+      }
+
+      const resolvedConfig = profileCanvasConfigWithIntegrationCard(
+        {
+          ...module.config,
+          displayMode: module.type === "music_playlist" ? "playlist" : "player",
+        },
+        card,
+      );
+
+      setMusicUrlValue(card.sourceUrl);
+      updateModuleConfig(
+        configWithContent(
+          resolvedConfig,
+          true,
+          ["audio", "tracks", "video"],
+        ),
+      );
+    } catch (error) {
+      if (musicUrlResolveSequenceRef.current !== resolveSequence) {
+        return;
+      }
+
+      setMusicUrlError(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "This is not a supported Spotify, Apple Music, or YouTube music link.",
+      );
+    } finally {
+      if (musicUrlResolveSequenceRef.current === resolveSequence) {
+        setMusicUrlResolving(false);
+      }
+    }
+  }
+
   function handleProfileInfoImageInput(
     event: ChangeEvent<HTMLInputElement>,
     purpose: "avatar" | "banner",
@@ -3576,11 +3679,14 @@ function ModuleSettingsModal({
   }
 
   function handleClose() {
+    musicUrlResolveSequenceRef.current += 1;
     setConnectionPlatform("website");
     setConnectionValue("");
     setConnectionError(undefined);
     setConnectionFormOpen(false);
     setModuleAudioError(undefined);
+    setMusicUrlError(undefined);
+    setMusicUrlResolving(false);
     setModuleVideoError(undefined);
     setModuleImageCropQueue([]);
     onClose();
@@ -3734,12 +3840,20 @@ function ModuleSettingsModal({
 
     setModuleAudioUploading(true);
     setModuleAudioError(undefined);
+    const uploadSequence = musicUrlResolveSequenceRef.current + 1;
+    musicUrlResolveSequenceRef.current = uploadSequence;
+    setMusicUrlResolving(false);
 
     try {
       const [upload, duration] = await Promise.all([
         onModuleAudioUpload(file),
         readMediaFileDuration(file),
       ]);
+
+      if (musicUrlResolveSequenceRef.current !== uploadSequence) {
+        return;
+      }
+
       const title = sanitizeUploadedMediaTitle(file.name, "Uploaded track");
       const resolvedDuration = upload.duration ?? duration;
       const audio = {
@@ -3751,6 +3865,9 @@ function ModuleSettingsModal({
         url: upload.url,
         ...(resolvedDuration ? { duration: resolvedDuration } : {}),
       };
+
+      setMusicUrlValue("");
+      setMusicUrlError(undefined);
 
       if (module.type === "music_playlist") {
         const tracks: ProfileModulePlaylistTrack[] = [
@@ -4537,18 +4654,98 @@ function ModuleSettingsModal({
                 </div>
               ) : null}
               {showMusicUrlField ? (
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase text-muted">
+                <div className="space-y-2">
+                  <label
+                    className="block text-xs font-semibold uppercase text-muted"
+                    htmlFor={`profile-module-music-url-${module.id}`}
+                  >
                     Music link
-                  </span>
-                  <input
-                    className="mt-1 min-h-11 w-full rounded-control border border-line bg-canvas/45 px-3 text-sm text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
-                    value={module.config.url ?? ""}
-                    placeholder="https://"
-                    data-testid="profile-module-settings-url"
-                    onChange={(event) => handleUrlConfig(event.currentTarget.value)}
-                  />
-                </label>
+                  </label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      id={`profile-module-music-url-${module.id}`}
+                      className="min-h-11 min-w-0 flex-1 rounded-control border border-line bg-canvas/45 px-3 text-sm text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
+                      value={musicUrlValue}
+                      placeholder="https://open.spotify.com/playlist/..."
+                      data-testid="profile-module-settings-url"
+                      aria-invalid={Boolean(musicUrlError)}
+                      aria-describedby={
+                        musicUrlError
+                          ? `profile-module-music-url-error-${module.id}`
+                          : undefined
+                      }
+                      onChange={(event) => {
+                        musicUrlResolveSequenceRef.current += 1;
+                        setMusicUrlValue(event.currentTarget.value);
+                        setMusicUrlError(undefined);
+                        setMusicUrlResolving(false);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void resolveMusicUrl(event.currentTarget.value);
+                        }
+                      }}
+                      onPaste={(event) => {
+                        const pastedUrl = event.clipboardData.getData("text");
+
+                        if (pastedUrl.trim()) {
+                          event.preventDefault();
+                          void resolveMusicUrl(pastedUrl);
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-control border border-line bg-surface px-4 text-sm font-semibold text-text transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-wait disabled:opacity-60"
+                      disabled={musicUrlResolving}
+                      data-testid="profile-module-settings-url-resolve"
+                      onClick={() => void resolveMusicUrl(musicUrlValue)}
+                    >
+                      {musicUrlResolving ? "Checking…" : "Use link"}
+                    </button>
+                  </div>
+                  {musicUrlError ? (
+                    <p
+                      id={`profile-module-music-url-error-${module.id}`}
+                      className="text-xs font-semibold text-rose-ink"
+                      role="alert"
+                    >
+                      {musicUrlError}
+                    </p>
+                  ) : null}
+                  {module.config.integration &&
+                  musicUrlValue.trim() === (module.config.url ?? "").trim() ? (
+                    <div
+                      className="flex min-w-0 items-center gap-3 rounded-card border border-line bg-surface/62 p-3"
+                      data-testid="profile-music-url-preview"
+                    >
+                      <span className="grid size-10 shrink-0 place-items-center rounded-card border border-line bg-canvas/70 text-text">
+                        <ProfileConnectionIcon
+                          platform={module.config.integration.provider}
+                          size={18}
+                        />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-text">
+                          {module.config.integration.metadata.title ??
+                            module.config.label ??
+                            profileCanvasProviderLabel(
+                              module.config.integration.provider,
+                            )}
+                        </p>
+                        <p className="truncate text-xs font-medium text-muted">
+                          {profileCanvasProviderLabel(
+                            module.config.integration.provider,
+                          )}
+                          {module.config.integration.metadata.subtitle
+                            ? ` · ${module.config.integration.metadata.subtitle}`
+                            : ""}
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           ) : definition.category === "video" || module.type === "github_repo" ? (

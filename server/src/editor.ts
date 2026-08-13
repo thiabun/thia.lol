@@ -19,7 +19,8 @@ import {
   profileBadgesPayloadFromRows,
   profileIntegrationCachePayload,
   profileIntegrationGeneratedCardPayload,
-  profileIntegrationNormalizeUrl,
+  profileModuleAcceptsIntegration,
+  profileModuleConfigWithNormalizedSource,
   profileModuleLayoutPayload,
   profileModuleCanvasSpanAllowed,
   profilePayloadWithFeatured,
@@ -34,7 +35,10 @@ import {
   type ProfileSocialContext,
   type UserBadgeRow,
 } from "./profiles.js";
-import { integrationProviderFromModulePlatform } from "./integrations.js";
+import {
+  normalizeIntegrationUrl,
+  type IntegrationUrlFailureReason,
+} from "./integration-urls.js";
 import type { SettingsPayload } from "./private.js";
 import type { RequestSession } from "./sessions.js";
 
@@ -457,7 +461,7 @@ class MysqlEditorRepository implements EditorRepository {
       throw new EditorRouteError("Profile info cannot be hidden.", 422);
     }
 
-    const config = validateModuleConfig(body.config);
+    const config = validateModuleConfig(body.config, type);
     await this.withTransaction(async (connection) => {
       await this.lockProfileEditorUser(connection, session.userId);
       const hadOpenDraft = await this.lockOpenCanvasDraft(
@@ -539,7 +543,7 @@ class MysqlEditorRepository implements EditorRepository {
       }
 
       if ("config" in body) {
-        nextConfig = validateModuleConfig(body.config);
+        nextConfig = validateModuleConfig(body.config, module.type);
         updates.push("config_json = ?");
         params.push(JSON.stringify(nextConfig));
       }
@@ -948,7 +952,10 @@ class MysqlEditorRepository implements EditorRepository {
       const validatedModules = canvasDraftModulesWithPersistedTypes(
         state.modules,
         persistedRows,
-      );
+      ).map((module) => ({
+        ...module,
+        config: normalizeModuleConfigForPersistence(module.type, module.config),
+      }));
       const deletedPersistedModules =
         canvasDraftPersistedModulesForDelete(validatedModules);
       const modulesForCommit = normalizeDraftModulePositions(
@@ -1781,16 +1788,13 @@ class MysqlEditorRepository implements EditorRepository {
       return null;
     }
 
-    const normalized = profileIntegrationNormalizeUrl(
-      config.url,
-      typeof config.platform === "string"
-        ? integrationProviderFromModulePlatform(config.platform)
-        : null,
-    );
+    const result = normalizeIntegrationUrl(config.url);
 
-    if (normalized === null) {
+    if (!result.ok || !profileModuleAcceptsIntegration(type, result.value)) {
       return null;
     }
+
+    const normalized = result.value;
 
     const [rows] = await executor.execute<ProfileIntegrationCacheRow[]>(
       `SELECT provider, resource_type, resource_id, resource_key, source_url, metadata_json, embed_json,
@@ -2826,7 +2830,7 @@ function modulePayload(row: ProfileModuleRow): ProfileModulePayload | null {
     id: numberValue(row.id),
     type,
     title: nullableString(row.title),
-    config: jsonObject(row.config_json),
+    config: profileModuleConfigWithNormalizedSource(type, jsonObject(row.config_json)),
     visibility: row.visibility,
     position: numberValue(row.position),
     pinned: booleanValue(row.grid_pinned),
@@ -3077,7 +3081,10 @@ function validateModuleStatus(value: unknown): string {
   return value;
 }
 
-function validateModuleConfig(value: unknown): Record<string, unknown> {
+function validateModuleConfig(
+  value: unknown,
+  type?: string,
+): Record<string, unknown> {
   if (value === null || value === undefined) {
     return {};
   }
@@ -3086,12 +3093,17 @@ function validateModuleConfig(value: unknown): Record<string, unknown> {
     throw new EditorRouteError("Module config must be an object.", 422);
   }
 
-  return value as Record<string, unknown>;
+  const config = value as Record<string, unknown>;
+
+  return type === undefined
+    ? config
+    : normalizeModuleConfigForPersistence(type, config);
 }
 
 function validateDraftModuleConfig(
   value: unknown,
   options: { repairInvalidConfig?: boolean },
+  type: string,
 ): Record<string, unknown> {
   if (
     options.repairInvalidConfig === true &&
@@ -3102,7 +3114,122 @@ function validateDraftModuleConfig(
     return {};
   }
 
-  return validateModuleConfig(value);
+  const config = validateModuleConfig(value);
+
+  return options.repairInvalidConfig === true
+    ? profileModuleConfigWithNormalizedSource(type, config)
+    : normalizeModuleConfigForPersistence(type, config);
+}
+
+function normalizeModuleConfigForPersistence(
+  type: string,
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  const canonicalType = canonicalProfileModuleType(type);
+  const tracks = Array.isArray(config.tracks) ? config.tracks : [];
+  const hasUploadedTracks =
+    canonicalType === "music_playlist" &&
+    tracks.some((track) => {
+      if (typeof track !== "object" || track === null || Array.isArray(track)) {
+        return false;
+      }
+
+      const audio = (track as Record<string, unknown>).audio;
+      return typeof audio === "object" && audio !== null && !Array.isArray(audio);
+    });
+  const hasUploadedAudio =
+    canonicalType === "music" &&
+    typeof config.audio === "object" &&
+    config.audio !== null &&
+    !Array.isArray(config.audio);
+  const hasUploadedVideo =
+    canonicalType === "uploaded_video" &&
+    typeof config.video === "object" &&
+    config.video !== null &&
+    !Array.isArray(config.video);
+
+  if (hasUploadedTracks || hasUploadedAudio || hasUploadedVideo) {
+    const uploadedConfig: Record<string, unknown> = {
+      ...config,
+      sourceMode: "upload",
+      ...(hasUploadedTracks || hasUploadedAudio ? { platform: "custom" } : {}),
+    };
+    delete uploadedConfig.integration;
+    delete uploadedConfig.url;
+    if (hasUploadedVideo) {
+      delete uploadedConfig.platform;
+    }
+    return uploadedConfig;
+  }
+
+  if (!integrationModuleTypes.has(type) && !integrationModuleTypes.has(canonicalType)) {
+    return config;
+  }
+
+  const rawUrl = config.url;
+
+  if (rawUrl === undefined || (typeof rawUrl === "string" && rawUrl.trim() === "")) {
+    const emptyConfig = { ...config };
+    delete emptyConfig.integration;
+    delete emptyConfig.platform;
+    delete emptyConfig.sourceMode;
+    delete emptyConfig.url;
+    return emptyConfig;
+  }
+
+  const normalized = normalizeIntegrationUrl(rawUrl);
+
+  if (!normalized.ok) {
+    throw profileModuleSourceError(canonicalType, normalized.reason);
+  }
+
+  if (!profileModuleAcceptsIntegration(canonicalType, normalized.value)) {
+    throw profileModuleSourceError(canonicalType, "unsupported_resource");
+  }
+
+  const normalizedConfig: Record<string, unknown> = {
+    ...config,
+    platform: normalized.value.provider,
+    sourceMode: normalized.value.provider,
+    url: normalized.value.sourceUrl,
+  };
+  delete normalizedConfig.integration;
+  return normalizedConfig;
+}
+
+function profileModuleSourceError(
+  type: string,
+  reason: IntegrationUrlFailureReason,
+): EditorRouteError {
+  const subject = type === "music_playlist" ? "Playlist URL" : type === "music" ? "Music URL" : "Integration URL";
+
+  if (reason === "https_required") {
+    return new EditorRouteError(`${subject} must use HTTPS.`, 422);
+  }
+
+  if (reason === "credentials_forbidden") {
+    return new EditorRouteError(`${subject} cannot include credentials.`, 422);
+  }
+
+  if (reason === "unsupported_host" || reason === "unsupported_resource") {
+    if (type === "music_playlist") {
+      return new EditorRouteError(
+        "Use a Spotify, Apple Music, or YouTube playlist URL.",
+        422,
+      );
+    }
+
+    if (type === "music") {
+      return new EditorRouteError(
+        "Use a Spotify, Apple Music, or YouTube music URL.",
+        422,
+      );
+    }
+
+    return new EditorRouteError("Choose a supported integration URL.", 422);
+  }
+
+  return new EditorRouteError(`${subject} is invalid.`, 422);
 }
 
 function moduleTypeLabel(type: string): string {
@@ -3211,7 +3338,7 @@ function validateDraftModules(
       }
     }
 
-    let config = validateDraftModuleConfig(record.config, options);
+    let config = validateDraftModuleConfig(record.config, options, type);
     const hadCanvasSize = "canvasSize" in config;
 
     if (hadCanvasSize) {

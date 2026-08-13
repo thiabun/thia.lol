@@ -1438,6 +1438,76 @@ function ProfileModuleContent({
     );
   }
 
+  if (profileModuleIsPlaylist(module)) {
+    const tracks = module.config.tracks ?? [];
+
+    if (tracks.length > 0) {
+      return (
+        <MusicPlaylistPlayer
+          fallbackLabel="Playlist"
+          module={module}
+          autoplayRequestId={musicAutoplayRequestId}
+          size={size}
+        />
+      );
+    }
+
+    const integration = module.config.integration;
+    const sourceUrl = profilePlaylistSourceUrl(module);
+    const provider = profilePlaylistProviderFromUrl(sourceUrl);
+    const sourceIdentity = profilePlaylistResourceIdentity(sourceUrl);
+      const matchedIntegration =
+      integration?.provider === provider &&
+      integration?.resourceType === "playlist" &&
+      sourceIdentity !== undefined &&
+      profilePlaylistResourceIdentity(integration.sourceUrl) === sourceIdentity &&
+      `${integration.provider}:playlist:${integration.resourceId}` === sourceIdentity
+          ? integration
+          : undefined;
+      const routedIntegration =
+        matchedIntegration ?? profilePlaylistIntegrationFromUrl(sourceUrl);
+
+    if (provider === "apple_music" && sourceUrl) {
+      const embedSrc = profileAppleMusicPlaylistEmbedSrc(sourceUrl);
+
+      if (embedSrc) {
+        return (
+          <ProfileAppleMusicPlaylistEmbed
+            embedSrc={embedSrc}
+            fallbackLabel="Playlist"
+            module={module}
+          />
+        );
+      }
+    }
+
+      if (
+        routedIntegration &&
+        ["spotify", "youtube"].includes(routedIntegration.provider)
+      ) {
+      return (
+        <MusicPlaylistPlayer
+          autoplayRequestId={musicAutoplayRequestId}
+          fallbackLabel="Playlist"
+            integration={routedIntegration}
+          module={module}
+          size={size}
+        />
+      );
+    }
+
+    return sourceUrl ? (
+      <ProfilePlaylistOpenLink
+        fallbackLabel="Playlist"
+        module={module}
+        size={size}
+        sourceUrl={sourceUrl}
+      />
+    ) : (
+      <ProfileModuleEmptyPrompt module={module} />
+    );
+  }
+
   if (
     module.type === "creator_live" ||
     moduleCategory === "video" ||
@@ -1467,17 +1537,6 @@ function ProfileModuleContent({
   }
 
   if (module.type === "music" || moduleCategory === "music") {
-    if (module.type === "music_playlist") {
-      return (
-        <MusicPlaylistPlayer
-          fallbackLabel="Playlist"
-          module={module}
-          autoplayRequestId={musicAutoplayRequestId}
-          size={size}
-        />
-      );
-    }
-
     if (module.config.audio) {
       return (
         <UploadedAudioPlayer
@@ -2200,6 +2259,99 @@ function UploadedAudioPlayer({
   );
 }
 
+function ProfilePlaylistOpenLink({
+  fallbackLabel,
+  module,
+  size,
+  sourceUrl,
+}: {
+  fallbackLabel: string;
+  module: ProfileModule;
+  size?: ProfileGridModuleSize | undefined;
+  sourceUrl: string;
+}) {
+  const presentation = profileModulePresentation(size);
+  const title = module.config.label ?? fallbackLabel;
+  const provider = profilePlaylistProviderFromUrl(sourceUrl);
+  const secondaryText = presentation.showSecondaryText
+    ? provider
+      ? platformDisplayName(provider)
+      : moduleLinkPreview(sourceUrl)
+    : undefined;
+
+  return (
+    <a
+      aria-label="Open playlist"
+      className="flex h-full min-h-0 min-w-0 items-center gap-3 rounded-card border border-line bg-canvas/55 p-3 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      data-profile-playlist-source={provider ?? "unresolved"}
+      data-testid="profile-music-playlist-open-fallback"
+      href={sourceUrl}
+      rel="noopener noreferrer"
+      target="_blank"
+    >
+      <span className="grid size-10 shrink-0 place-items-center rounded-card border border-line bg-surface/80 text-text">
+        <Music2 aria-hidden="true" size={18} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-text">
+          {title}
+        </span>
+        {secondaryText ? (
+          <span className="mt-0.5 block truncate text-xs text-muted">
+            {secondaryText}
+          </span>
+        ) : null}
+      </span>
+      <span className="shrink-0 text-xs font-semibold text-text">Open playlist</span>
+      <ExternalLink aria-hidden="true" size={15} className="shrink-0 text-muted" />
+    </a>
+  );
+}
+
+function ProfileAppleMusicPlaylistEmbed({
+  embedSrc,
+  fallbackLabel,
+  module,
+}: {
+  embedSrc: string;
+  fallbackLabel: string;
+  module: ProfileModule;
+}) {
+  const title = module.config.label ?? fallbackLabel;
+
+  if (isProfileShareCaptureMode()) {
+    return (
+      <ProfileGenericEmbedCaptureSurface
+        height={152}
+        label={title}
+        provider="apple_music"
+      />
+    );
+  }
+
+  return (
+    <div
+      className="h-full min-h-0 overflow-hidden rounded-card border border-line bg-surface/74 shadow-inner-soft"
+      data-testid="profile-apple-music-playlist-embed"
+    >
+      <span className="sr-only">{title}</span>
+      <iframe
+        className="block size-full min-h-0 border-0 bg-transparent"
+        title={`${title} on Apple Music`}
+        src={embedSrc}
+        height={152}
+        loading="lazy"
+        referrerPolicy="strict-origin-when-cross-origin"
+        allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+        sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+        allowFullScreen
+        data-profile-embed-provider="apple_music"
+        data-testid="profile-integration-embed-apple_music"
+      />
+    </div>
+  );
+}
+
 function MusicPlaylistPlayer({
   autoplayRequestId = 0,
   fallbackLabel,
@@ -2231,7 +2383,7 @@ function MusicPlaylistPlayer({
   const presentation = profileModulePresentation(size);
   const compactPlayer = profilePresentationIsCompact(presentation.tier);
   const richPlayer = presentation.preferLargeMedia;
-  const tracks = profilePlaylistTracks(module, integration, fallbackLabel);
+  const tracks = profilePlaylistTracks(module, integration);
   const activeTrack = tracks[Math.min(activeIndex, Math.max(0, tracks.length - 1))];
   const metadata = integration?.metadata;
   const title = metadata?.title ?? module.config.label ?? fallbackLabel;
@@ -2605,7 +2757,7 @@ function MusicPlaylistPlayer({
             </div>
           </div>
         </div>
-        <div
+        {tracks.length > 0 ? <div
           className={cn(
             "min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-card border border-line bg-canvas/48",
             compactPlayer ? "max-h-28" : undefined,
@@ -2647,7 +2799,7 @@ function MusicPlaylistPlayer({
               </button>
             );
           })}
-        </div>
+        </div> : null}
       </div>
       {localAudio ? (
         <audio
@@ -2766,6 +2918,55 @@ function ProfileIntegrationRichCard({
         module={module}
         size={size}
       />
+    );
+  }
+
+  if (
+    (isPlaylistModuleIntegration(module, integration) ||
+      module.type === "youtube_playlist") &&
+    integration.provider === "apple_music"
+  ) {
+    if (!showPrimaryEmbed || !primaryEmbed || !primaryEmbedSrc) {
+      return (
+        <ProfilePlaylistOpenLink
+          fallbackLabel={fallbackLabel}
+          module={module}
+          size={size}
+          sourceUrl={integration.sourceUrl}
+        />
+      );
+    }
+
+    if (captureMode) {
+      return (
+        <ProfileGenericEmbedCaptureSurface
+          height={primaryEmbedHeight}
+          imageUrl={metadata.imageUrl}
+          label={title}
+          provider={integration.provider}
+        />
+      );
+    }
+
+    return (
+      <div
+        className="h-full min-h-0 overflow-hidden rounded-card border border-line bg-surface/74 shadow-inner-soft"
+        data-testid="profile-apple-music-playlist-embed"
+      >
+        <iframe
+          className="block size-full min-h-0 border-0 bg-transparent"
+          title={primaryEmbed.title}
+          src={primaryEmbedSrc}
+          height={primaryEmbedHeight}
+          loading="lazy"
+          referrerPolicy="strict-origin-when-cross-origin"
+          allow={primaryEmbed.allow}
+          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+          allowFullScreen
+          data-profile-embed-provider="apple_music"
+          data-testid="profile-integration-embed-apple_music"
+        />
+      </div>
     );
   }
 
@@ -4370,7 +4571,6 @@ function profileUploadedAudioProgressLabel(
 function profilePlaylistTracks(
   module: ProfileModule,
   integration: ProfileIntegrationCard | undefined,
-  fallbackLabel: string,
 ): ProfileModulePlaylistTrack[] {
   if ((module.config.tracks ?? []).length > 0) {
     return module.config.tracks ?? [];
@@ -4382,22 +4582,187 @@ function profilePlaylistTracks(
     return statTracks;
   }
 
-  if (integration) {
-    return [
-      {
-        id: integration.resourceKey,
-        title: integration.metadata.title ?? module.config.label ?? fallbackLabel,
-        artist: integration.metadata.subtitle ?? profilePlaylistProviderLabel(integration),
-        sourceUrl: integration.sourceUrl,
-      },
-    ];
+  return [];
+}
+
+type ProfilePlaylistProvider = "apple_music" | "spotify" | "youtube";
+
+function profileModuleIsPlaylist(module: ProfileModule): boolean {
+  return (
+    module.type === "music_playlist" ||
+    module.type === "spotify_playlist" ||
+    module.type === "apple_music_playlist" ||
+    module.type === "youtube_music_playlist"
+  );
+}
+
+function profilePlaylistSourceUrl(module: ProfileModule): string | undefined {
+  const configuredUrl = module.config.url?.trim();
+
+  if (configuredUrl) {
+    return configuredUrl;
   }
 
-  return [
-    {
-      title: module.config.label ?? fallbackLabel,
+  const integrationUrl = module.config.integration?.sourceUrl.trim();
+  return integrationUrl || undefined;
+}
+
+function profilePlaylistProviderFromUrl(
+  value: string | undefined,
+): ProfilePlaylistProvider | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(value);
+
+    if (
+      url.protocol !== "https:" ||
+      url.username !== "" ||
+      url.password !== "" ||
+      url.port !== ""
+    ) {
+      return undefined;
+    }
+
+    if (url.hostname === "open.spotify.com") {
+      return "spotify";
+    }
+
+    if (url.hostname === "music.apple.com" || url.hostname === "itunes.apple.com") {
+      return "apple_music";
+    }
+
+    if (
+      [
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "music.youtube.com",
+        "youtu.be",
+      ].includes(url.hostname)
+    ) {
+      return "youtube";
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+}
+
+function profileAppleMusicPlaylistEmbedSrc(value: string): string | undefined {
+  if (!profilePlaylistResourceIdentity(value)?.startsWith("apple_music:playlist:")) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(value);
+    const segments = url.pathname.split("/").filter(Boolean);
+    const playlistIndex = segments.indexOf("playlist");
+
+    if (playlistIndex < 0 || playlistIndex >= segments.length - 1) {
+      return undefined;
+    }
+
+    return `https://embed.music.apple.com${url.pathname}${url.search}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function profilePlaylistResourceIdentity(
+  value: string | undefined,
+): string | undefined {
+  const provider = profilePlaylistProviderFromUrl(value);
+
+  if (!provider || !value) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(value);
+    const segments = url.pathname.split("/").filter(Boolean);
+
+    if (provider === "spotify") {
+      const resourceSegments = /^intl-[a-z]{2}(?:-[a-z]{2})?$/u.test(
+        (segments[0] ?? "").toLowerCase(),
+      )
+        ? segments.slice(1)
+        : segments;
+      const resourceId = resourceSegments[0] === "playlist"
+        ? resourceSegments[1]
+        : undefined;
+
+      return resourceId ? `spotify:playlist:${resourceId}` : undefined;
+    }
+
+    if (provider === "apple_music") {
+      const playlistIndex = segments.indexOf("playlist");
+      const resourceId = playlistIndex >= 0 ? segments.at(-1) : undefined;
+
+      return resourceId ? `apple_music:playlist:${resourceId}` : undefined;
+    }
+
+    const resourceId =
+      url.pathname.replace(/\/+$/u, "") === "/playlist"
+        ? url.searchParams.get("list")
+        : null;
+
+    return resourceId ? `youtube:playlist:${resourceId}` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function profilePlaylistIntegrationFromUrl(
+  value: string | undefined,
+): ProfileIntegrationCard | undefined {
+  const identity = profilePlaylistResourceIdentity(value);
+
+  if (!identity || !value) {
+    return undefined;
+  }
+
+  const firstSeparator = identity.indexOf(":");
+  const secondSeparator = identity.indexOf(":", firstSeparator + 1);
+  const provider = identity.slice(0, firstSeparator) as ProfilePlaylistProvider;
+  const resourceId = identity.slice(secondSeparator + 1);
+
+  if (!resourceId || (provider !== "spotify" && provider !== "youtube")) {
+    return undefined;
+  }
+
+  const sourceUrl =
+    provider === "spotify"
+      ? `https://open.spotify.com/playlist/${resourceId}`
+      : `https://www.youtube.com/playlist?list=${encodeURIComponent(resourceId)}`;
+  const embedSrc =
+    provider === "spotify"
+      ? `https://open.spotify.com/embed/playlist/${encodeURIComponent(resourceId)}?theme=0`
+      : `https://www.youtube-nocookie.com/embed/videoseries?list=${encodeURIComponent(resourceId)}`;
+
+  return {
+    apiBacked: false,
+    embed: {
+      allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+      height: provider === "spotify" ? 152 : 220,
+      src: embedSrc,
+      title: provider === "spotify" ? "Spotify playlist" : "YouTube playlist",
+      type: "iframe",
     },
-  ];
+    metadata: {
+      stats: {},
+      subtitle: platformDisplayName(provider),
+    },
+    provider,
+    resourceId,
+    resourceKey: identity,
+    resourceType: "playlist",
+    sourceUrl,
+    stale: false,
+  };
 }
 
 function profilePlaylistTracksFromStats(

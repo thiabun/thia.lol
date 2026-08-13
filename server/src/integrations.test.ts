@@ -411,6 +411,173 @@ describe("integration OAuth music flows", () => {
 });
 
 describe("public integration metadata", () => {
+  it("uses the recognized Spotify hostname when preferred metadata is stale", async () => {
+    const httpJson = vi.fn<IntegrationHttpJson>(async (method, url) => {
+      if (method === "POST" && url === "https://accounts.spotify.com/api/token") {
+        return { access_token: "spotify-app-token" };
+      }
+
+      if (method === "GET" && url === "https://api.spotify.com/v1/playlists/list123") {
+        return {
+          name: "Canonical playlist",
+          owner: { display_name: "Playlist owner" },
+          tracks: { total: 3, items: [] },
+        };
+      }
+
+      throw new Error(`Unexpected integration request: ${method} ${url}`);
+    });
+    const repository = createTestRepository(new FakeIntegrationPool(), httpJson);
+
+    const card = await repository.resolvePublicMetadata(
+      "https://open.spotify.com/intl-no/playlist/list123?si=share",
+      "apple_music",
+    );
+
+    expect(card).toMatchObject({
+      provider: "spotify",
+      resourceType: "playlist",
+      resourceId: "list123",
+      resourceKey: "spotify:playlist:list123",
+      sourceUrl: "https://open.spotify.com/playlist/list123",
+      metadata: {
+        title: "Canonical playlist",
+        subtitle: "Playlist owner",
+        stats: { items: 3 },
+      },
+      embed: {
+        src: "https://open.spotify.com/embed/playlist/list123?theme=0",
+      },
+      apiBacked: true,
+    });
+  });
+
+  it("preserves the native Apple Music embed path and query", async () => {
+    const repository = createTestRepository(
+      new FakeIntegrationPool(),
+      async () => {
+        throw new Error("Apple Music metadata is unavailable.");
+      },
+    );
+
+    const card = await repository.resolvePublicMetadata(
+      "https://music.apple.com/no/playlist/my-list/pl.u-abc?l=nb",
+      "spotify",
+    );
+
+    expect(card).toMatchObject({
+      provider: "apple_music",
+      resourceType: "playlist",
+      resourceId: "pl.u-abc",
+      sourceUrl: "https://music.apple.com/no/playlist/my-list/pl.u-abc?l=nb",
+      metadata: {
+        title: "Apple Music playlist",
+      },
+      embed: {
+        src: "https://embed.music.apple.com/no/playlist/my-list/pl.u-abc?l=nb",
+      },
+      apiBacked: false,
+    });
+  });
+
+  it("repairs legacy Apple Music embed paths when reading cache rows", async () => {
+    const pool = new FakeIntegrationPool();
+    pool.cacheRows.push({
+      id: 91,
+      provider: "apple_music",
+      resource_type: "playlist",
+      resource_id: "pl.u-abc",
+      resource_key: "apple_music:playlist:pl.u-abc",
+      source_url: "https://music.apple.com/no/playlist/my-list/pl.u-abc?l=nb",
+      metadata_json: JSON.stringify({
+        title: "Cached Apple playlist",
+        subtitle: "Apple Music",
+      }),
+      embed_json: JSON.stringify({
+        type: "iframe",
+        src: "https://embed.music.apple.com/us/playlist/pl.u-abc",
+        title: "Apple Music embed",
+        height: 152,
+      }),
+      api_backed: 0,
+      fetched_at: "2026-06-25 11:30:00",
+      expires_at: "2026-06-25 13:00:00",
+      stale_at: null,
+      error_message: null,
+    });
+    const repository = createTestRepository(pool);
+
+    const card = await repository.resolvePublicMetadata(
+      "https://music.apple.com/no/playlist/my-list/pl.u-abc?l=nb",
+      "spotify",
+    );
+
+    expect(card).toMatchObject({
+      provider: "apple_music",
+      resourceType: "playlist",
+      sourceUrl: "https://music.apple.com/no/playlist/my-list/pl.u-abc?l=nb",
+      metadata: { title: "Cached Apple playlist" },
+      embed: {
+        src: "https://embed.music.apple.com/no/playlist/my-list/pl.u-abc?l=nb",
+      },
+    });
+  });
+
+  it("labels a YouTube playlist honestly when enrichment is unavailable", async () => {
+    const repository = createTestRepository(
+      new FakeIntegrationPool(),
+      async () => {
+        throw new Error("YouTube metadata is unavailable.");
+      },
+    );
+
+    const card = await repository.resolvePublicMetadata(
+      "https://music.youtube.com/playlist?list=PL123",
+      "apple_music",
+    );
+
+    expect(card).toMatchObject({
+      provider: "youtube",
+      resourceType: "playlist",
+      resourceId: "PL123",
+      sourceUrl: "https://www.youtube.com/playlist?list=PL123",
+      metadata: {
+        title: "YouTube playlist",
+      },
+      embed: {
+        src: "https://www.youtube-nocookie.com/embed/videoseries?list=PL123",
+      },
+      apiBacked: false,
+    });
+  });
+
+  it("returns clear errors for malformed or unsupported music URLs", async () => {
+    const repository = createTestRepository(new FakeIntegrationPool());
+
+    await expect(
+      repository.resolveMetadata(session, { url: "not a URL" }),
+    ).rejects.toMatchObject({
+      message: "Integration URL is invalid.",
+      statusCode: 422,
+    });
+    await expect(
+      repository.resolveMetadata(session, {
+        url: "http://open.spotify.com/playlist/list123",
+      }),
+    ).rejects.toMatchObject({
+      message: "Integration URL must use HTTPS.",
+      statusCode: 422,
+    });
+    await expect(
+      repository.resolveMetadata(session, {
+        url: "https://example.com/playlist/list123",
+      }),
+    ).rejects.toMatchObject({
+      message: "Choose a supported integration URL.",
+      statusCode: 422,
+    });
+  });
+
   it("refreshes expired Twitch status with a short cache window", async () => {
     const now = new Date("2026-07-22T04:30:00.000Z");
     const cacheUpserts: unknown[][] = [];
@@ -561,9 +728,26 @@ type FakeAccountRow = {
   error_at: string | null;
 };
 
+type FakeCacheRow = {
+  id: number;
+  provider: string;
+  resource_type: string;
+  resource_id: string;
+  resource_key: string;
+  source_url: string;
+  metadata_json: string | null;
+  embed_json: string | null;
+  api_backed: number;
+  fetched_at: string | null;
+  expires_at: string | null;
+  stale_at: string | null;
+  error_message: string | null;
+};
+
 class FakeIntegrationPool {
   readonly oauthStates: FakeOAuthState[] = [];
   readonly accounts = new Map<string, FakeAccountRow>();
+  readonly cacheRows: FakeCacheRow[] = [];
   private nextStateId = 1;
 
   async execute(sql: string, params: readonly unknown[] = []): Promise<[unknown[], unknown]> {
@@ -663,7 +847,15 @@ class FakeIntegrationPool {
     }
 
     if (sql.includes("FROM profile_integration_metadata_cache")) {
-      return [[], []];
+      const [provider, resourceKey] = params;
+      return [
+        this.cacheRows.filter(
+          (row) =>
+            row.provider === String(provider) &&
+            row.resource_key === String(resourceKey),
+        ),
+        [],
+      ];
     }
 
     if (sql.includes("INSERT INTO profile_integration_metadata_cache")) {

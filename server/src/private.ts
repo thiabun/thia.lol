@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 
 import type { Pool, RowDataPacket } from "mysql2/promise";
 
+import { normalizeIntegrationUrl } from "./integration-urls.js";
 import { verifyPhpPassword } from "./passwords.js";
 import { initialsFromName, roomPayloadFromRow, type RoomPayload, type RoomRow, type UserPayload } from "./rooms.js";
 import type { RequestSession } from "./sessions.js";
@@ -1959,155 +1960,19 @@ function onboardingProviderLink(providerValue: unknown, urlValue: unknown): {
   savedAt: string;
 } {
   const provider = onboardingProvider(providerValue);
-  const url = integrationUrl(urlValue);
-  const normalized = normalizeIntegrationUrl(url, provider);
+  const normalized = normalizeIntegrationUrl(urlValue);
 
-  if (normalized === null || normalized.provider !== provider) {
+  if (!normalized.ok || normalized.value.provider !== provider) {
     throw new PrivateRouteError("Choose a supported integration URL.", 422);
   }
 
   return {
     provider,
-    url: normalized.sourceUrl,
-    resourceType: normalized.resourceType,
-    resourceId: normalized.resourceId,
+    url: normalized.value.sourceUrl,
+    resourceType: normalized.value.resourceType,
+    resourceId: normalized.value.resourceId,
     savedAt: utcIsoPhp(),
   };
-}
-
-function integrationUrl(value: unknown): string {
-  if (typeof value !== "string") {
-    throw new PrivateRouteError("Integration URL is invalid.", 422);
-  }
-
-  const trimmed = value.trim();
-
-  let url: URL;
-
-  try {
-    url = new URL(trimmed);
-  } catch {
-    throw new PrivateRouteError("Integration URL is invalid.", 422);
-  }
-
-  if (trimmed.length > 500) {
-    throw new PrivateRouteError("Integration URL is invalid.", 422);
-  }
-
-  if (url.protocol !== "https:") {
-    throw new PrivateRouteError("Integration URL must use HTTPS.", 422);
-  }
-
-  return trimmed;
-}
-
-function normalizeIntegrationUrl(rawUrl: string, preferredProvider: string): {
-  provider: string;
-  resourceType: string;
-  resourceId: string;
-  sourceUrl: string;
-} | null {
-  const url = new URL(rawUrl);
-  const host = url.hostname.toLowerCase();
-  const segments = url.pathname.replace(/^\/+|\/+$/gu, "") === ""
-    ? []
-    : url.pathname.replace(/^\/+|\/+$/gu, "").split("/");
-  let resourceType = "link";
-  let resourceId = "";
-  let sourceUrl = rawUrl;
-
-  if (preferredProvider === "spotify" && host === "open.spotify.com" && segments.length >= 2) {
-    resourceType = segments[0]?.toLowerCase() ?? "";
-    resourceId = (segments[1] ?? "").replace(/[^A-Za-z0-9]/gu, "");
-    sourceUrl = `https://open.spotify.com/${resourceType}/${resourceId}`;
-  } else if (
-    preferredProvider === "apple_music" &&
-    (host === "music.apple.com" || host === "itunes.apple.com") &&
-    segments.length >= 2
-  ) {
-    resourceType = url.pathname.includes("/artist/")
-      ? "artist"
-      : url.pathname.includes("/playlist/")
-        ? "playlist"
-        : url.pathname.includes("/album/")
-          ? "album"
-          : "song";
-    resourceId = lastPathIdentifier(rawUrl);
-  } else if (
-    preferredProvider === "youtube" &&
-    ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"].includes(host)
-  ) {
-    const playlistId = youtubeIdentifier(url.searchParams.get("list") ?? "");
-    const firstSegment = segments[0] ?? "";
-    let videoId = "";
-
-    if (host === "youtu.be" && firstSegment !== "") {
-      videoId = youtubeIdentifier(firstSegment);
-    } else if (firstSegment === "watch") {
-      videoId = youtubeIdentifier(url.searchParams.get("v") ?? "");
-    } else if (["shorts", "live", "embed"].includes(firstSegment) && segments[1] !== undefined) {
-      videoId = youtubeIdentifier(segments[1]);
-    }
-
-    if (videoId !== "") {
-      resourceType = "video";
-      resourceId = videoId;
-      sourceUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(resourceId)}`;
-    } else if (playlistId !== "") {
-      resourceType = "playlist";
-      resourceId = playlistId;
-      sourceUrl = `https://www.youtube.com/playlist?list=${encodeURIComponent(resourceId)}`;
-    } else if (firstSegment.startsWith("@")) {
-      resourceType = "channel";
-      resourceId = youtubeIdentifier(firstSegment, true);
-      sourceUrl = `https://www.youtube.com/${resourceId}`;
-    } else if (firstSegment === "channel" && segments[1] !== undefined) {
-      resourceType = "channel";
-      resourceId = youtubeIdentifier(segments[1]);
-      sourceUrl = `https://www.youtube.com/channel/${encodeURIComponent(resourceId)}`;
-    }
-  } else if (preferredProvider === "twitch" && (host === "twitch.tv" || host === "www.twitch.tv") && segments[0] !== undefined) {
-    resourceType = segments[0] === "videos" && segments[1] !== undefined ? "video" : "channel";
-    resourceId = resourceType === "video" ? segments[1] ?? "" : segments[0] ?? "";
-  } else if (preferredProvider === "github" && (host === "github.com" || host === "www.github.com") && segments.length >= 2) {
-    resourceType = "repo";
-    resourceId = `${segments[0] ?? ""}/${segments[1] ?? ""}`.toLowerCase();
-    sourceUrl = `https://github.com/${resourceId}`;
-  }
-
-  resourceId = resourceId.trim();
-
-  if (resourceId === "") {
-    return null;
-  }
-
-  return {
-    provider: preferredProvider,
-    resourceType,
-    resourceId,
-    sourceUrl,
-  };
-}
-
-function youtubeIdentifier(value: string, allowHandle = false): string {
-  const trimmed = value.trim();
-
-  if (allowHandle && trimmed.startsWith("@")) {
-    const handle = trimmed.slice(1).replace(/[^A-Za-z0-9._-]/gu, "");
-
-    return handle === "" ? "" : `@${handle}`;
-  }
-
-  return trimmed.replace(/[^A-Za-z0-9_-]/gu, "");
-}
-
-function lastPathIdentifier(rawUrl: string): string {
-  const url = new URL(rawUrl);
-  const segments = url.pathname.replace(/^\/+|\/+$/gu, "").split("/").filter(Boolean);
-  const last = segments.at(-1) ?? "";
-  const match = /(?:^|[?&])i=(\d+)/u.exec(url.search);
-
-  return match?.[1] ?? last;
 }
 
 function addOnboardingStep(steps: string[], step: string): string[] {

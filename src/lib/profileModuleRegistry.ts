@@ -1242,6 +1242,10 @@ export function profileModuleSummary(module: ProfileModule): string {
   if (module.type === "music_playlist") {
     const count = module.config.tracks?.length ?? 0;
 
+    if (count === 0) {
+      return "";
+    }
+
     return count === 1 ? "1 song" : `${count} songs`;
   }
 

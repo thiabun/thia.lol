@@ -1,5 +1,9 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 
+import {
+  normalizeIntegrationUrl,
+  type NormalizedIntegrationUrl,
+} from "./integration-urls.js";
 import type { IntegrationCardPayload } from "./integrations.js";
 import { initialsFromName, roomPayloadFromRow, type RoomPayload, type RoomRow, type UserPayload } from "./rooms.js";
 
@@ -461,13 +465,7 @@ export interface ProfileIntegrationCacheRow extends RowDataPacket {
   error_message: string | null;
 }
 
-export interface ProfileIntegrationNormalizedResource {
-  provider: string;
-  resourceType: string;
-  resourceId: string;
-  resourceKey: string;
-  sourceUrl: string;
-}
+export type ProfileIntegrationNormalizedResource = NormalizedIntegrationUrl;
 
 interface PublicProfileContext {
   row: ProfileRow;
@@ -597,6 +595,92 @@ export function canonicalProfileModuleType(type: string): string {
   }
 
   return type;
+}
+
+export function profileModuleConfigWithNormalizedSource(
+  type: string,
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  const canonicalType = canonicalProfileModuleType(type);
+  const hasUploadedTracks =
+    canonicalType === "music_playlist" &&
+    Array.isArray(config.tracks) &&
+    config.tracks.some((track) => {
+      if (typeof track !== "object" || track === null || Array.isArray(track)) {
+        return false;
+      }
+
+      const audio = (track as Record<string, unknown>).audio;
+      return typeof audio === "object" && audio !== null && !Array.isArray(audio);
+    });
+  const hasUploadedAudio =
+    canonicalType === "music" &&
+    typeof config.audio === "object" &&
+    config.audio !== null &&
+    !Array.isArray(config.audio);
+
+  if (hasUploadedTracks || hasUploadedAudio) {
+    const uploadedConfig: Record<string, unknown> = {
+      ...config,
+      platform: "custom",
+      sourceMode: "upload",
+    };
+    delete uploadedConfig.integration;
+    delete uploadedConfig.url;
+    return uploadedConfig;
+  }
+
+  if (typeof config.url !== "string" || config.url.trim() === "") {
+    return config;
+  }
+
+  const result = normalizeIntegrationUrl(config.url);
+
+  if (!result.ok || !profileModuleAcceptsIntegration(canonicalType, result.value)) {
+    return config;
+  }
+
+  const normalizedConfig: Record<string, unknown> = {
+    ...config,
+    platform: result.value.provider,
+    sourceMode: result.value.provider,
+    url: result.value.sourceUrl,
+  };
+  delete normalizedConfig.integration;
+  return normalizedConfig;
+}
+
+export function profileModuleAcceptsIntegration(
+  type: string,
+  normalized: NormalizedIntegrationUrl,
+): boolean {
+  const canonicalType = canonicalProfileModuleType(type);
+  const musicProvider =
+    normalized.provider === "spotify" ||
+    normalized.provider === "apple_music" ||
+    normalized.provider === "youtube";
+
+  if (canonicalType === "music_playlist" || canonicalType === "youtube_playlist") {
+    return musicProvider && normalized.resourceType === "playlist";
+  }
+
+  if (canonicalType === "music") {
+    return musicProvider;
+  }
+
+  if (canonicalType === "github_repo") {
+    return normalized.provider === "github" && normalized.resourceType === "repo";
+  }
+
+  if (canonicalType === "twitch_channel") {
+    return normalized.provider === "twitch" && normalized.resourceType === "channel";
+  }
+
+  if (canonicalType === "youtube_video" || canonicalType === "youtube_stream") {
+    return normalized.provider === "youtube" && normalized.resourceType === "video";
+  }
+
+  return canonicalType === "creator_live";
 }
 
 export function supportedProfileModuleType(type: string): string | null {
@@ -1069,9 +1153,11 @@ class MysqlProfilesRepository implements ProfilesRepository {
     userId: number,
     capabilities: ProfileSchemaCapabilities,
   ): Promise<Record<string, unknown>> {
+    const normalizedConfig = profileModuleConfigWithNormalizedSource(type, config);
+
     if (type === "links" || type === "connections") {
       return {
-        links: await this.profileModuleLinksWithConnectedIntegrations(config, userId, capabilities),
+        links: await this.profileModuleLinksWithConnectedIntegrations(normalizedConfig, userId, capabilities),
       };
     }
 
@@ -1083,11 +1169,15 @@ class MysqlProfilesRepository implements ProfilesRepository {
       profileModuleVideoTypes.has(type) ||
       profileModuleMusicSpecificTypes.has(type)
     ) {
-      const integration = await this.profileIntegrationCardForModule(config, capabilities);
+      const integration = await this.profileIntegrationCardForModule(
+        type,
+        normalizedConfig,
+        capabilities,
+      );
 
       if (integration !== null) {
         return {
-          ...config,
+          ...normalizedConfig,
           integration,
         };
       }
@@ -1095,11 +1185,11 @@ class MysqlProfilesRepository implements ProfilesRepository {
 
     if (type === "featured_badges") {
       return {
-        userBadgeIds: await this.profileModuleVisibleUserBadgeIds(userId, config.userBadgeIds, capabilities),
+        userBadgeIds: await this.profileModuleVisibleUserBadgeIds(userId, normalizedConfig.userBadgeIds, capabilities),
       };
     }
 
-    return config;
+    return normalizedConfig;
   }
 
   private async profileModuleLinksWithConnectedIntegrations(
@@ -1205,6 +1295,7 @@ class MysqlProfilesRepository implements ProfilesRepository {
   }
 
   private async profileIntegrationCardForModule(
+    type: string,
     config: Record<string, unknown>,
     capabilities: ProfileSchemaCapabilities,
   ): Promise<Record<string, unknown> | null> {
@@ -1212,12 +1303,9 @@ class MysqlProfilesRepository implements ProfilesRepository {
       return null;
     }
 
-    const normalized = profileIntegrationNormalizeUrl(
-      config.url,
-      typeof config.platform === "string" ? profileIntegrationProviderFromPlatform(config.platform) : null,
-    );
+    const normalized = profileIntegrationNormalizeUrl(config.url, null);
 
-    if (normalized === null) {
+    if (normalized === null || !profileModuleAcceptsIntegration(type, normalized)) {
       return null;
     }
 
@@ -3273,24 +3361,6 @@ function profileIntegrationProviderToPlatform(provider: string): string | null {
   return null;
 }
 
-function profileIntegrationProviderFromPlatform(platform: string): string | null {
-  switch (platform) {
-    case "spotify":
-      return "spotify";
-    case "apple_music":
-      return "apple_music";
-    case "youtube":
-    case "youtube_music":
-      return "youtube";
-    case "twitch":
-      return "twitch";
-    case "github":
-      return "github";
-    default:
-      return null;
-  }
-}
-
 function profileIntegrationProviderLabel(provider: string): string {
   switch (provider) {
     case "spotify":
@@ -3313,7 +3383,18 @@ export function profileIntegrationCachePayload(row: ProfileIntegrationCacheRow):
   const provider = stringValue(row.provider);
   const resourceType = stringValue(row.resource_type);
   const resourceId = stringValue(row.resource_id);
-  const generatedEmbed = profileIntegrationGeneratedEmbedPayload(provider, resourceType, resourceId);
+  const generatedEmbed = profileIntegrationGeneratedEmbedPayload(
+    provider,
+    resourceType,
+    resourceId,
+    stringValue(row.source_url),
+  );
+  const resolvedEmbed =
+    provider === "apple_music" && generatedEmbed !== null
+      ? generatedEmbed
+      : Object.keys(embed).length === 0
+        ? generatedEmbed
+        : embed;
 
   return {
     provider,
@@ -3322,7 +3403,7 @@ export function profileIntegrationCachePayload(row: ProfileIntegrationCacheRow):
     resourceKey: stringValue(row.resource_key),
     sourceUrl: stringValue(row.source_url),
     metadata: jsonRecord(row.metadata_json),
-    embed: Object.keys(embed).length === 0 ? generatedEmbed : embed,
+    embed: resolvedEmbed,
     apiBacked: booleanValue(row.api_backed),
     fetchedAt: nullableStringValue(row.fetched_at),
     expiresAt: nullableStringValue(row.expires_at),
@@ -3339,6 +3420,7 @@ export function profileIntegrationGeneratedCardPayload(
     normalized.provider,
     normalized.resourceType,
     normalized.resourceId,
+    normalized.sourceUrl,
   );
 
   if (embed === null) {
@@ -3386,23 +3468,60 @@ function profileIntegrationGeneratedEmbedPayload(
   provider: string,
   resourceType: string,
   resourceId: string,
+  sourceUrl?: string,
 ): Record<string, unknown> | null {
-  if (provider !== "youtube") {
+  let src: string | null = null;
+  let title = "Integration embed";
+  let height = 220;
+
+  if (provider === "spotify") {
+    const safeResourceType = /^(?:album|artist|episode|playlist|show|track)$/u.test(resourceType)
+      ? resourceType
+      : "";
+    const safeResourceId = /^[A-Za-z0-9_-]+$/u.test(resourceId) ? resourceId : "";
+
+    if (safeResourceType === "" || safeResourceId === "") {
+      return null;
+    }
+
+    src = `https://open.spotify.com/embed/${encodeURIComponent(safeResourceType)}/${encodeURIComponent(safeResourceId)}?theme=0`;
+    title = "Spotify embed";
+    height = safeResourceType === "track" ? 80 : 152;
+  } else if (provider === "apple_music" && sourceUrl !== undefined) {
+    const normalized = normalizeIntegrationUrl(sourceUrl);
+
+    if (
+      !normalized.ok ||
+      normalized.value.provider !== "apple_music" ||
+      normalized.value.resourceType !== resourceType ||
+      normalized.value.resourceId !== resourceId
+    ) {
+      return null;
+    }
+
+    const source = new URL(normalized.value.sourceUrl);
+    src = `https://embed.music.apple.com${source.pathname}${source.search}`;
+    title = "Apple Music embed";
+    height = 152;
+  } else if (provider !== "youtube") {
     return null;
   }
 
-  const safeResourceId = profileIntegrationYoutubeIdentifier(resourceId);
+  if (provider === "youtube") {
+    const safeResourceId = profileIntegrationYoutubeIdentifier(resourceId);
 
-  if (safeResourceId === "") {
-    return null;
+    if (safeResourceId === "") {
+      return null;
+    }
+
+    src =
+      resourceType === "playlist"
+        ? `https://www.youtube-nocookie.com/embed/videoseries?list=${encodeURIComponent(safeResourceId)}`
+        : resourceType === "video" || resourceType === "stream"
+          ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(safeResourceId)}`
+          : null;
+    title = "YouTube embed";
   }
-
-  const src =
-    resourceType === "playlist"
-      ? `https://www.youtube-nocookie.com/embed/videoseries?list=${encodeURIComponent(safeResourceId)}`
-      : resourceType === "video" || resourceType === "stream"
-        ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(safeResourceId)}`
-        : null;
 
   if (src === null) {
     return null;
@@ -3411,9 +3530,9 @@ function profileIntegrationGeneratedEmbedPayload(
   return {
     type: "iframe",
     src,
-    title: "YouTube embed",
+    title,
     allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
-    height: 220,
+    height,
   };
 }
 
@@ -3421,125 +3540,10 @@ export function profileIntegrationNormalizeUrl(
   rawUrl: string,
   preferredProvider: string | null,
 ): ProfileIntegrationNormalizedResource | null {
-  let url: URL;
+  void preferredProvider;
+  const normalized = normalizeIntegrationUrl(rawUrl);
 
-  try {
-    url = new URL(rawUrl.trim());
-  } catch {
-    return null;
-  }
-
-  if (url.protocol !== "https:") {
-    return null;
-  }
-
-  const host = url.hostname.toLowerCase();
-  const segments = url.pathname
-    .split("/")
-    .map((segment) => segment.trim())
-    .filter((segment) => segment !== "");
-  const provider = preferredProvider ?? profileIntegrationProviderFromHost(host);
-
-  if (provider === null) {
-    return null;
-  }
-
-  let resourceType = "link";
-  let resourceId = "";
-  let sourceUrl = url.toString();
-
-  if (provider === "spotify" && host === "open.spotify.com" && segments.length >= 2) {
-    resourceType = segments[0]?.toLowerCase() ?? "";
-    resourceId = segments[1]?.replace(/[^A-Za-z0-9]/g, "") ?? "";
-    sourceUrl = `https://open.spotify.com/${resourceType}/${resourceId}`;
-  } else if (provider === "apple_music" && ["music.apple.com", "itunes.apple.com"].includes(host) && segments.length >= 2) {
-    resourceType = url.pathname.includes("/artist/")
-      ? "artist"
-      : url.pathname.includes("/playlist/")
-        ? "playlist"
-        : url.pathname.includes("/album/")
-          ? "album"
-          : "song";
-    resourceId = profileIntegrationLastIdentifier(url);
-  } else if (
-    provider === "youtube" &&
-    ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"].includes(host)
-  ) {
-    const firstSegment = segments[0] ?? "";
-    const playlistId = profileIntegrationYoutubeIdentifier(url.searchParams.get("list") ?? "");
-    let videoId = "";
-
-    if (host === "youtu.be" && segments[0] !== undefined) {
-      videoId = profileIntegrationYoutubeIdentifier(segments[0]);
-    } else if (firstSegment === "watch") {
-      videoId = profileIntegrationYoutubeIdentifier(url.searchParams.get("v") ?? "");
-    } else if (["shorts", "live", "embed"].includes(firstSegment) && segments[1] !== undefined) {
-      videoId = profileIntegrationYoutubeIdentifier(segments[1]);
-    }
-
-    if (videoId !== "") {
-      resourceType = "video";
-      resourceId = videoId;
-      sourceUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(resourceId)}`;
-    } else if (playlistId !== "") {
-      resourceType = "playlist";
-      resourceId = playlistId;
-      sourceUrl = `https://www.youtube.com/playlist?list=${encodeURIComponent(resourceId)}`;
-    } else if (firstSegment.startsWith("@")) {
-      resourceType = "channel";
-      resourceId = profileIntegrationYoutubeIdentifier(firstSegment, true);
-      sourceUrl = `https://www.youtube.com/${resourceId}`;
-    } else if (firstSegment === "channel" && segments[1] !== undefined) {
-      resourceType = "channel";
-      resourceId = profileIntegrationYoutubeIdentifier(segments[1]);
-      sourceUrl = `https://www.youtube.com/channel/${encodeURIComponent(resourceId)}`;
-    }
-  } else if (provider === "twitch" && ["twitch.tv", "www.twitch.tv"].includes(host) && segments[0] !== undefined) {
-    resourceType = segments[0] === "videos" && segments[1] !== undefined ? "video" : "channel";
-    resourceId = resourceType === "video" ? (segments[1] ?? "") : segments[0];
-  } else if (provider === "github" && ["github.com", "www.github.com"].includes(host) && segments.length >= 2) {
-    resourceType = "repo";
-    resourceId = `${segments[0]}/${segments[1]}`.toLowerCase();
-    sourceUrl = `https://github.com/${resourceId}`;
-  }
-
-  resourceId = resourceId.trim();
-
-  if (resourceId === "") {
-    return null;
-  }
-
-  return {
-    provider,
-    resourceType,
-    resourceId,
-    resourceKey: `${provider}:${resourceType}:${resourceId}`,
-    sourceUrl,
-  };
-}
-
-function profileIntegrationProviderFromHost(host: string): string | null {
-  if (host === "open.spotify.com") {
-    return "spotify";
-  }
-
-  if (host === "music.apple.com" || host === "itunes.apple.com") {
-    return "apple_music";
-  }
-
-  if (["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"].includes(host)) {
-    return "youtube";
-  }
-
-  if (host === "twitch.tv" || host === "www.twitch.tv") {
-    return "twitch";
-  }
-
-  if (host === "github.com" || host === "www.github.com") {
-    return "github";
-  }
-
-  return null;
+  return normalized.ok ? normalized.value : null;
 }
 
 function profileIntegrationYoutubeIdentifier(value: string, allowHandle = false): string {
@@ -3552,21 +3556,6 @@ function profileIntegrationYoutubeIdentifier(value: string, allowHandle = false)
   }
 
   return trimmed.replace(/[^A-Za-z0-9_-]/g, "");
-}
-
-function profileIntegrationLastIdentifier(url: URL): string {
-  const queryId = url.searchParams.get("i");
-
-  if (queryId !== null && queryId !== "") {
-    return queryId.replace(/[^A-Za-z0-9._-]/g, "");
-  }
-
-  const segments = url.pathname
-    .split("/")
-    .map((segment) => segment.trim())
-    .filter((segment) => segment !== "");
-
-  return (segments.at(-1) ?? "").replace(/[^A-Za-z0-9._-]/g, "");
 }
 
 function jsonRecord(value: string | null | undefined): Record<string, unknown> {

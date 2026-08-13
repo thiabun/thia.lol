@@ -965,6 +965,7 @@ export function profileCanvasConfigWithIntegrationCard(
     configured: true,
     integration: card,
     platform: card.provider,
+    sourceMode: card.provider,
     url: card.sourceUrl,
   };
 

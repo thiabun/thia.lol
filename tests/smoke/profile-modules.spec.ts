@@ -39,6 +39,13 @@ test.beforeEach(async ({ context }) => {
       ),
     });
   });
+  await context.route(/^https:\/\/embed\.music\.apple\.com\//, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: "<!doctype html><html><body>Apple Music embed stub</body></html>",
+    });
+  });
   await context.route(
     "**/uploads/media/2026/07/profile-audit-*.png",
     async (route) => {
@@ -1217,6 +1224,273 @@ test("YouTube video modules render allowlisted nocookie embeds", async ({ page }
       /allow-scripts allow-same-origin/,
     );
   }
+});
+
+test.describe("playlist source routing", () => {
+  test("Spotify playlist URLs enable playback even when saved provider tags are stale", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await mockSpotifyIframeApi(page);
+    await mockProfileModules(page, {
+      authenticated: true,
+      modules: [
+        withAuditLayout(
+          playlistIntegrationModule({
+            id: 101,
+            label: "Canonical Spotify playlist",
+            provider: "spotify",
+            resourceId: "canonicalSpotify",
+            sourceUrl: "https://open.spotify.com/playlist/canonicalSpotify",
+          }),
+          "4x3",
+          1,
+        ),
+        withAuditLayout(
+          playlistIntegrationModule({
+            id: 102,
+            label: "Spotify URL with stale Apple tags",
+            platform: "apple_music",
+            provider: "spotify",
+            resourceId: "staleAppleTag",
+            sourceMode: "apple_music",
+            sourceUrl: "https://open.spotify.com/playlist/staleAppleTag",
+          }),
+          "4x3",
+          1,
+          5,
+        ),
+        withAuditLayout(
+          playlistModuleWithStaleSameProviderCard({
+            actualResourceId: "actualSpotifyPlaylist",
+            id: 109,
+            staleResourceId: "staleSpotifyPlaylist",
+          }),
+          "4x3",
+          4,
+        ),
+        withAuditLayout(
+          {
+            ...playlistIntegrationModule({
+              id: 110,
+              label: "Legacy YouTube module with Spotify URL",
+              platform: "youtube",
+              provider: "spotify",
+              resourceId: "legacyActualSpotify",
+              sourceMode: "youtube",
+              sourceUrl: "https://open.spotify.com/playlist/legacyActualSpotify",
+            }),
+            type: "youtube_playlist",
+          },
+          "4x3",
+          4,
+          5,
+        ),
+      ],
+    });
+    await acknowledgeCookieNotice(page);
+    await page.goto("/@thia");
+
+    const players = page.getByTestId("profile-music-playlist-player");
+    const playButtons = page.getByTestId("profile-music-playlist-play-button");
+    await expect(players).toHaveCount(3);
+    await expect(playButtons).toHaveCount(3);
+    await expect(playButtons.first()).toBeEnabled();
+    await expect(playButtons.last()).toBeEnabled();
+    await expect(page.getByTestId("profile-music-playlist-provider-frame")).toHaveCount(3);
+    await expect(page.getByTestId("profile-music-playlist-track")).toHaveCount(0);
+
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const testWindow = window as Window & { __spotifyControllerOptions?: unknown[] };
+          return testWindow.__spotifyControllerOptions?.length ?? 0;
+        }),
+      )
+      .toBe(4);
+
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const testWindow = window as Window & {
+            __spotifyControllerOptions?: Array<{ uri?: unknown }>;
+          };
+          return (testWindow.__spotifyControllerOptions ?? []).map(
+            (options) => options.uri,
+          );
+        }),
+      )
+      .toEqual([
+        "spotify:playlist:canonicalSpotify",
+        "spotify:playlist:staleAppleTag",
+        "spotify:playlist:actualSpotifyPlaylist",
+        "spotify:playlist:legacyActualSpotify",
+      ]);
+
+    const legacySpotify = page
+      .locator('[data-testid="profile-grid-module-youtube_playlist"]')
+      .filter({ hasText: "Legacy YouTube module with Spotify URL" });
+    await expect(legacySpotify.getByTestId("profile-spotify-custom-player")).toBeVisible();
+    await expect(legacySpotify.getByTestId("profile-spotify-play-button")).toBeEnabled();
+    await expect(legacySpotify.getByTestId("profile-spotify-provider-frame")).toBeAttached();
+
+    const staleModule = page
+      .locator('[data-testid="profile-grid-module-music_playlist"]')
+      .filter({ hasText: "Spotify URL with stale Apple tags" });
+    await staleModule.getByTestId("profile-music-playlist-play-button").click();
+    await expect.poll(() => spotifyPlayCalls(page)).toBe(1);
+    await expect(staleModule.getByTestId("profile-integration-embed-apple_music")).toHaveCount(0);
+
+    const staleSameProvider = page
+      .locator('[data-testid="profile-grid-module-music_playlist"]')
+      .filter({ hasText: "Spotify URL with stale Spotify card" });
+    await expect(staleSameProvider.getByTestId("profile-music-playlist-player")).toBeVisible();
+    await expect(staleSameProvider.getByTestId("profile-music-playlist-play-button")).toBeEnabled();
+  });
+
+  test("YouTube playlists are playable while Apple playlists use visible native embeds", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await mockProfileModules(page, {
+      authenticated: true,
+      modules: [
+        withAuditLayout(
+          playlistIntegrationModule({
+            id: 103,
+            label: "Canonical YouTube playlist",
+            provider: "youtube",
+            resourceId: "PLcanonical123",
+            sourceUrl: "https://www.youtube.com/playlist?list=PLcanonical123",
+          }),
+          "4x3",
+          1,
+        ),
+        withAuditLayout(
+          playlistIntegrationModule({
+            id: 104,
+            label: "Apple compact playlist",
+            provider: "apple_music",
+            resourceId: "pl.u-compact",
+            sourceUrl: "https://music.apple.com/us/playlist/compact/pl.u-compact",
+          }),
+          "3x2",
+          1,
+          5,
+        ),
+        withAuditLayout(
+          urlOnlyPlaylistModule({
+            id: 108,
+            label: "Apple URL without enrichment",
+            platform: "spotify",
+            sourceMode: "spotify",
+            url: "https://music.apple.com/no/playlist/url-only/pl.u-urlonly?l=nb",
+          }),
+          "3x2",
+          4,
+        ),
+      ],
+    });
+    await acknowledgeCookieNotice(page);
+    await page.goto("/@thia");
+
+    const youtubeModule = page
+      .locator('[data-testid="profile-grid-module-music_playlist"]')
+      .filter({ hasText: "Canonical YouTube playlist" });
+    const youtubeButton = youtubeModule.getByTestId("profile-music-playlist-play-button");
+    const youtubeEmbed = youtubeModule.getByTestId("profile-music-playlist-youtube-embed");
+    await expect(youtubeButton).toBeEnabled();
+    await expect(youtubeEmbed).toBeAttached();
+    await expect(youtubeEmbed).toHaveAttribute("src", /list=PLcanonical123/u);
+    await expect(youtubeEmbed).toHaveAttribute("src", /autoplay=0/u);
+    await youtubeButton.click();
+    await expect(youtubeEmbed).toHaveAttribute("src", /autoplay=1/u);
+
+    const appleEmbed = page.locator(
+      '[data-testid="profile-integration-embed-apple_music"][src="https://embed.music.apple.com/us/playlist/compact/pl.u-compact"]',
+    );
+    const appleModule = page
+      .locator('[data-testid="profile-grid-module-music_playlist"]')
+      .filter({ has: appleEmbed });
+    await expect(appleModule).toHaveAttribute("data-profile-grid-size", "3x2");
+    await expect(appleEmbed).toBeVisible();
+    await expect(appleEmbed).toHaveAttribute(
+      "src",
+      "https://embed.music.apple.com/us/playlist/compact/pl.u-compact",
+    );
+    await expect(appleEmbed).toHaveAttribute("height", "152");
+    await expect(appleEmbed).toHaveAttribute("loading", "lazy");
+    await expect(appleEmbed).toHaveAttribute("sandbox", /allow-scripts allow-same-origin/u);
+    await expect(appleModule.getByTestId("profile-music-playlist-player")).toHaveCount(0);
+
+    const urlOnlyAppleEmbed = page.locator(
+      '[data-testid="profile-integration-embed-apple_music"][src="https://embed.music.apple.com/no/playlist/url-only/pl.u-urlonly?l=nb"]',
+    );
+    const urlOnlyApple = page
+      .locator('[data-testid="profile-grid-module-music_playlist"]')
+      .filter({ has: urlOnlyAppleEmbed });
+    await expect(urlOnlyAppleEmbed).toBeVisible();
+    await expect(urlOnlyAppleEmbed).toHaveAttribute(
+      "src",
+      "https://embed.music.apple.com/no/playlist/url-only/pl.u-urlonly?l=nb",
+    );
+    await expect(urlOnlyApple.getByRole("link", { name: "Open playlist" })).toHaveCount(0);
+  });
+
+  test("uploaded tracks use real counts and unresolved URLs render an honest link", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1366, height: 1000 });
+    await mockProfileModules(page, {
+      authenticated: true,
+      modules: [
+        withAuditLayout(uploadedPlaylistModule({ id: 105, label: "Solo upload", tracks: 1 }), "4x3", 1),
+        withAuditLayout(
+          uploadedPlaylistModule({
+            id: 106,
+            label: "Two uploads",
+            staleSourceUrl: "https://open.spotify.com/playlist/stale-provider",
+            tracks: 2,
+          }),
+          "4x3",
+          1,
+          5,
+        ),
+        withAuditLayout(unresolvedPlaylistModule({ id: 107 }), "4x3", 4),
+      ],
+    });
+    await acknowledgeCookieNotice(page);
+    await page.goto("/@thia");
+
+    const modules = page.locator('[data-testid="profile-grid-module-music_playlist"]');
+    const solo = modules.filter({ hasText: "Solo upload" });
+    const multiple = modules.filter({ hasText: "Two uploads" });
+    const unresolved = modules.filter({ hasText: "Mystery mix" });
+    await expect(solo.getByTestId("profile-music-playlist-track")).toHaveCount(1);
+    await expect(solo).toContainText("1 song");
+    await expect(solo).not.toContainText("1 songs");
+    await expect(multiple.getByTestId("profile-music-playlist-track")).toHaveCount(2);
+    await expect(multiple).toContainText("2 songs");
+    await multiple.getByTestId("profile-music-playlist-track").nth(1).click();
+    await expect(multiple.getByTestId("profile-music-playlist-audio")).toHaveAttribute(
+      "src",
+      "/uploads/media/2026/08/profile_music-playlist-106-track-2.mp3",
+    );
+    await expect(multiple.getByTestId("profile-music-playlist-provider-frame")).toHaveCount(0);
+    await expect(multiple.getByTestId("profile-music-playlist-youtube-embed")).toHaveCount(0);
+    await expect(multiple.getByTestId("profile-integration-embed-apple_music")).toHaveCount(0);
+    await expect(multiple.getByTestId("profile-music-playlist-open-link")).toHaveCount(0);
+
+    const openLink = unresolved.getByRole("link", { name: "Open playlist", exact: true });
+    await expect(openLink).toBeVisible();
+    await expect(openLink).toHaveAttribute("href", "https://example.com/mystery-mix");
+    await expect(openLink).toHaveAttribute("target", "_blank");
+    await expect(openLink).toHaveAttribute("rel", "noopener noreferrer");
+    await expect(unresolved.getByTestId("profile-music-playlist-player")).toHaveCount(0);
+    await expect(unresolved.getByTestId("profile-music-playlist-track")).toHaveCount(0);
+    await expect(unresolved.getByRole("button", { name: "Play playlist" })).toHaveCount(0);
+    await expect(page.getByText("0 songs", { exact: true })).toHaveCount(0);
+  });
 });
 
 test("Spotify music player fills each allowed music module span", async ({
@@ -4512,6 +4786,184 @@ test("module picker creates uploaded audio playlist modules", async ({ page }) =
     });
 });
 
+test("pasted playlist links resolve provider previews and keep invalid edits out of drafts", async ({
+  page,
+}) => {
+  let draftPayload: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    onCanvasDraftSave: (payload) => {
+      draftPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-cell-5-4").click();
+  await page.getByTestId("profile-canvas-cell-8-6").click();
+  await page.getByRole("tab", { name: "Music" }).click();
+  await page.getByTestId("profile-module-picker-music_playlist").click();
+
+  const settings = page.getByTestId("profile-module-settings");
+  const input = settings.getByTestId("profile-module-settings-url");
+  const spotifyUrl = "https://open.spotify.com/playlist/editorPreview?si=pasted";
+  await input.evaluate((element, value) => {
+    const clipboard = new DataTransfer();
+    clipboard.setData("text", value);
+    element.dispatchEvent(
+      new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: clipboard,
+      }),
+    );
+  }, spotifyUrl);
+
+  const preview = settings.getByTestId("profile-music-url-preview");
+  await expect(preview).toBeVisible();
+  await expect(preview.getByTestId("connection-icon-spotify")).toBeVisible();
+  await expect(preview).toContainText("Spotify playlist preview");
+  await expect(input).toHaveValue(
+    "https://open.spotify.com/playlist/editorPreview",
+  );
+  await expect
+    .poll(() => {
+      const modules = Array.isArray(draftPayload?.modules)
+        ? (draftPayload.modules as Array<Record<string, unknown>>)
+        : [];
+      const playlist = modules.find((module) => module.type === "music_playlist");
+      return playlist?.config as Record<string, unknown> | undefined;
+    })
+    .toMatchObject({
+      platform: "spotify",
+      sourceMode: "spotify",
+      url: "https://open.spotify.com/playlist/editorPreview",
+    });
+
+  await input.fill("https://example.com/not-a-playlist");
+  await input.press("Enter");
+  await expect(settings.getByRole("alert")).toContainText(
+    "Use a Spotify, Apple Music, or YouTube music URL.",
+  );
+  await expect(input).toHaveAttribute("aria-invalid", "true");
+  await expect
+    .poll(() => {
+      const modules = Array.isArray(draftPayload?.modules)
+        ? (draftPayload.modules as Array<Record<string, unknown>>)
+        : [];
+      const playlist = modules.find((module) => module.type === "music_playlist");
+      const config = playlist?.config as Record<string, unknown> | undefined;
+
+      return JSON.stringify({
+        platform: config?.platform,
+        sourceMode: config?.sourceMode,
+        url: config?.url,
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        platform: "spotify",
+        sourceMode: "spotify",
+        url: "https://open.spotify.com/playlist/editorPreview",
+      }),
+    );
+
+  await input.fill("not a URL");
+  await input.press("Enter");
+  await expect(settings.getByRole("alert")).toContainText(
+    "Integration URL is invalid.",
+  );
+});
+
+test("newer playlist edits and uploads win over older URL resolution", async ({
+  page,
+}) => {
+  let draftPayload: Record<string, unknown> | undefined;
+  const oldPaste = deferredSignal();
+  const uploadRace = deferredSignal();
+  const oldUrl = "https://open.spotify.com/playlist/oldPaste";
+  const newUrl = "https://open.spotify.com/playlist/newPaste";
+  const uploadRaceUrl = "https://open.spotify.com/playlist/uploadRace";
+
+  await mockMediaMetadata(page);
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    integrationMetadataResolveGates: {
+      [oldUrl]: oldPaste.promise,
+      [uploadRaceUrl]: uploadRace.promise,
+    },
+    onCanvasDraftSave: (payload) => {
+      draftPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-cell-5-4").click();
+  await page.getByTestId("profile-canvas-cell-8-6").click();
+  await page.getByRole("tab", { name: "Music" }).click();
+  await page.getByTestId("profile-module-picker-music_playlist").click();
+
+  const settings = page.getByTestId("profile-module-settings");
+  const input = settings.getByTestId("profile-module-settings-url");
+  await input.fill(oldUrl);
+  await input.press("Enter");
+  await input.fill(newUrl);
+  await input.press("Enter");
+  await expect(settings.getByTestId("profile-music-url-preview")).toContainText(
+    "Spotify playlist preview",
+  );
+  await expect(input).toHaveValue(newUrl);
+
+  oldPaste.resolve();
+  await expect
+    .poll(() => {
+      const modules = Array.isArray(draftPayload?.modules)
+        ? (draftPayload.modules as Array<Record<string, unknown>>)
+        : [];
+      const playlist = modules.find((module) => module.type === "music_playlist");
+      const config = playlist?.config as Record<string, unknown> | undefined;
+      return config?.url;
+    })
+    .toBe(newUrl);
+
+  await input.fill(uploadRaceUrl);
+  await input.press("Enter");
+  await settings
+    .getByTestId("profile-module-settings-audio-input")
+    .setInputFiles(sampleMp3File("race-winner.mp3"));
+  await expect(settings.getByTestId("profile-module-playlist-track")).toContainText(
+    "race winner",
+  );
+
+  uploadRace.resolve();
+  await expect
+    .poll(() => {
+      const modules = Array.isArray(draftPayload?.modules)
+        ? (draftPayload.modules as Array<Record<string, unknown>>)
+        : [];
+      const playlist = modules.find((module) => module.type === "music_playlist");
+      const config = playlist?.config as Record<string, unknown> | undefined;
+      return {
+        platform: config?.platform,
+        sourceMode: config?.sourceMode,
+        tracks: config?.tracks,
+        url: config?.url,
+      };
+    })
+    .toMatchObject({
+      platform: "custom",
+      sourceMode: "upload",
+      tracks: [expect.objectContaining({ title: "race winner" })],
+      url: undefined,
+    });
+});
+
 test("authenticated integrations hide the connect prompt in module settings", async ({
   page,
 }) => {
@@ -7770,6 +8222,7 @@ test("profile module registry and Node storage guardrails are present by inspect
   const app = readFileSync("server/src/app.ts", "utf8");
   const editor = readFileSync("server/src/editor.ts", "utf8");
   const integrations = readFileSync("server/src/integrations.ts", "utf8");
+  const integrationUrls = readFileSync("server/src/integration-urls.ts", "utf8");
   const uploads = readFileSync("server/src/uploads.ts", "utf8");
   const serverEnv = readFileSync("server/env.example", "utf8");
   const moduleRegistry = readFileSync("src/lib/profileModuleRegistry.ts", "utf8");
@@ -7842,7 +8295,9 @@ test("profile module registry and Node storage guardrails are present by inspect
   expect(uploads).toContain('"profile_module_video"');
   expect(uploads).toContain('"profile_music"');
   expect(uploads).toContain("Unsupported audio type. Use MP3, M4A, AAC, WAV, FLAC, or OGG.");
-  expect(integrations).toContain('integrationProviders = ["spotify", "apple_music", "youtube", "twitch", "github"]');
+  expect(integrationUrls).toContain('export const integrationProviders = [');
+  expect(integrationUrls).toContain('"spotify",');
+  expect(integrationUrls).toContain('"apple_music",');
   expect(integrations).toContain("nacl.secretbox");
   expect(integrations).toContain("https://www.youtube-nocookie.com/embed/");
   expect(serverEnv).toContain("THIA_SECURITY_INTEGRATION_ENCRYPTION_KEY=");
@@ -7924,6 +8379,7 @@ async function mockProfileModules(
       accounts?: unknown[];
       providers?: unknown[];
     };
+    integrationMetadataResolveGates?: Record<string, Promise<void> | undefined>;
     invalidCanvasDraftPositions?: boolean;
     canvasDraftSaveDelayMs?: number;
     canvasDraftSaveError?: string;
@@ -8107,7 +8563,33 @@ async function mockProfileModules(
 
     const payload = (await route.request().postDataJSON()) as Record<string, unknown>;
     const url = typeof payload.url === "string" ? payload.url : "";
-    const provider = typeof payload.provider === "string" ? payload.provider : "twitch";
+    await options.integrationMetadataResolveGates?.[url];
+    const provider =
+      typeof payload.provider === "string"
+        ? payload.provider
+        : integrationProviderFromTestUrl(url);
+
+    if (!provider) {
+      let validUrl = true;
+
+      try {
+        void new URL(url);
+      } catch {
+        validUrl = false;
+      }
+
+      await route.fulfill({
+        status: 422,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: false,
+          error: validUrl
+            ? "Use a Spotify, Apple Music, or YouTube music URL."
+            : "Integration URL is invalid.",
+        }),
+      });
+      return;
+    }
 
     await route.fulfill({
       status: 200,
@@ -10761,6 +11243,212 @@ function musicModule(overrides: { id?: number; position?: number } = {}) {
   };
 }
 
+function playlistIntegrationModule({
+  id,
+  label,
+  platform,
+  provider,
+  resourceId,
+  sourceMode,
+  sourceUrl,
+}: {
+  id: number;
+  label: string;
+  platform?: string;
+  provider: "apple_music" | "spotify" | "youtube";
+  resourceId: string;
+  sourceMode?: string;
+  sourceUrl: string;
+}) {
+  const providerLabel =
+    provider === "apple_music" ? "Apple Music" : provider === "spotify" ? "Spotify" : "YouTube";
+  const parsedSourceUrl = new URL(sourceUrl);
+  const embedSrc =
+    provider === "apple_music"
+      ? `https://embed.music.apple.com${parsedSourceUrl.pathname}${parsedSourceUrl.search}`
+      : provider === "spotify"
+        ? `https://open.spotify.com/embed/playlist/${resourceId}?theme=0`
+        : `https://www.youtube-nocookie.com/embed/videoseries?list=${resourceId}`;
+
+  return {
+    id,
+    type: "music_playlist",
+    title: "Playlist",
+    config: {
+      configured: true,
+      label,
+      platform: platform ?? provider,
+      sourceMode: sourceMode ?? provider,
+      url: sourceUrl,
+      integration: {
+        provider,
+        resourceType: "playlist",
+        resourceId,
+        resourceKey: `${provider}:playlist:${resourceId}`,
+        sourceUrl,
+        metadata: { title: label, subtitle: providerLabel, imageUrl: null, stats: {} },
+        embed: {
+          type: "iframe",
+          src: embedSrc,
+          title: `${providerLabel} playlist`,
+          height: provider === "youtube" ? 220 : 152,
+          allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+        },
+        apiBacked: false,
+        fetchedAt: null,
+        stale: false,
+      },
+    },
+    visibility: "public",
+    position: id,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-08-13 00:00:00",
+    updatedAt: "2026-08-13 00:00:00",
+  };
+}
+
+function uploadedPlaylistModule({
+  id,
+  label,
+  staleSourceUrl,
+  tracks,
+}: {
+  id: number;
+  label: string;
+  staleSourceUrl?: string;
+  tracks: number;
+}) {
+  const staleIntegration = staleSourceUrl
+    ? playlistIntegrationModule({
+        id,
+        label: "Stale provider playlist",
+        provider: "spotify",
+        resourceId: "stale-provider",
+        sourceUrl: staleSourceUrl,
+      }).config.integration
+    : undefined;
+
+  return {
+    id,
+    type: "music_playlist",
+    title: "Playlist",
+    config: {
+      configured: true,
+      label,
+      platform: "custom",
+      sourceMode: "upload",
+      ...(staleSourceUrl
+        ? { integration: staleIntegration, url: staleSourceUrl }
+        : {}),
+      tracks: Array.from({ length: tracks }, (_, index) => {
+        const trackNumber = index + 1;
+        const title = `${label} track ${trackNumber}`;
+
+        return {
+          artist: "thia.lol",
+          duration: 120 + index,
+          id: `playlist-${id}-track-${trackNumber}`,
+          title,
+          audio: {
+            mime: "audio/mpeg",
+            size: 2048 + index,
+            title,
+            type: "audio/mpeg",
+            url: `/uploads/media/2026/08/profile_music-playlist-${id}-track-${trackNumber}.mp3`,
+          },
+        };
+      }),
+    },
+    visibility: "public",
+    position: id,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-08-13 00:00:00",
+    updatedAt: "2026-08-13 00:00:00",
+  };
+}
+
+function playlistModuleWithStaleSameProviderCard({
+  actualResourceId,
+  id,
+  staleResourceId,
+}: {
+  actualResourceId: string;
+  id: number;
+  staleResourceId: string;
+}) {
+  const module = playlistIntegrationModule({
+    id,
+    label: "Spotify URL with stale Spotify card",
+    provider: "spotify",
+    resourceId: staleResourceId,
+    sourceUrl: `https://open.spotify.com/playlist/${staleResourceId}`,
+  });
+
+  return {
+    ...module,
+    config: {
+      ...module.config,
+      url: `https://open.spotify.com/playlist/${actualResourceId}`,
+    },
+  };
+}
+
+function urlOnlyPlaylistModule({
+  id,
+  label,
+  platform,
+  sourceMode,
+  url,
+}: {
+  id: number;
+  label: string;
+  platform: string;
+  sourceMode: string;
+  url: string;
+}) {
+  return {
+    id,
+    type: "music_playlist",
+    title: "Playlist",
+    config: {
+      configured: true,
+      label,
+      platform,
+      sourceMode,
+      url,
+    },
+    visibility: "public",
+    position: id,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-08-13 00:00:00",
+    updatedAt: "2026-08-13 00:00:00",
+  };
+}
+
+function unresolvedPlaylistModule({ id }: { id: number }) {
+  return {
+    id,
+    type: "music_playlist",
+    title: "Playlist",
+    config: {
+      configured: true,
+      label: "Mystery mix",
+      platform: "apple_music",
+      sourceMode: "apple_music",
+      url: "https://example.com/mystery-mix",
+    },
+    visibility: "public",
+    position: id,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-08-13 00:00:00",
+    updatedAt: "2026-08-13 00:00:00",
+  };
+}
+
 function spotifyEmbedMusicModule(
   overrides: { id?: number; imageUrl?: string; position?: number } = {},
 ) {
@@ -11037,27 +11725,76 @@ function twitchStreamChatModule(
 }
 
 function integrationResolveCard(url: string, provider: string) {
-  const resolvedProvider = provider === "youtube" ? "youtube" : "twitch";
+  const resolvedProvider = ["apple_music", "spotify", "youtube", "twitch"].includes(provider)
+    ? provider
+    : "twitch";
+  const parsedUrl = new URL(url);
+  const playlistId =
+    resolvedProvider === "youtube"
+      ? parsedUrl.searchParams.get("list")
+      : parsedUrl.pathname.split("/").filter(Boolean).at(-1) ?? "playlist";
   const resourceId =
     resolvedProvider === "youtube"
-      ? youtubeResourceIdFromUrl(url)
+      ? playlistId ?? youtubeResourceIdFromUrl(url)
       : url.split("/").filter(Boolean).at(-1) ?? "thiabun";
 
+  if (resolvedProvider === "spotify" || resolvedProvider === "apple_music") {
+    const canonicalUrl =
+      resolvedProvider === "spotify"
+        ? `https://open.spotify.com/playlist/${resourceId.split("?")[0]}`
+        : url;
+    const providerLabel = resolvedProvider === "spotify" ? "Spotify" : "Apple Music";
+    const embedSrc =
+      resolvedProvider === "spotify"
+        ? `https://open.spotify.com/embed/playlist/${resourceId.split("?")[0]}?theme=0`
+        : `https://embed.music.apple.com${parsedUrl.pathname}${parsedUrl.search}`;
+
+    return {
+      provider: resolvedProvider,
+      resourceType: "playlist",
+      resourceId: resourceId.split("?")[0],
+      resourceKey: `${resolvedProvider}:playlist:${resourceId.split("?")[0]}`,
+      sourceUrl: canonicalUrl,
+      metadata: {
+        title: `${providerLabel} playlist preview`,
+        subtitle: providerLabel,
+        imageUrl: null,
+      },
+      embed: {
+        type: "iframe",
+        src: embedSrc,
+        title: `${providerLabel} embed`,
+        height: 152,
+        allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+      },
+      apiBacked: false,
+      fetchedAt: "2026-08-13T00:00:00Z",
+      stale: false,
+    };
+  }
+
   if (resolvedProvider === "youtube") {
+    const isPlaylist = playlistId !== null;
+    const sourceUrl = isPlaylist
+      ? `https://www.youtube.com/playlist?list=${resourceId}`
+      : url;
+
     return {
       provider: "youtube",
-      resourceType: "video",
+      resourceType: isPlaylist ? "playlist" : "video",
       resourceId,
-      resourceKey: `youtube:video:${resourceId}`,
-      sourceUrl: url,
+      resourceKey: `youtube:${isPlaylist ? "playlist" : "video"}:${resourceId}`,
+      sourceUrl,
       metadata: {
-        title: "YouTube video",
+        title: isPlaylist ? "YouTube playlist preview" : "YouTube video",
         subtitle: "YouTube",
         imageUrl: null,
       },
       embed: {
         type: "iframe",
-        src: `https://www.youtube-nocookie.com/embed/${resourceId}`,
+        src: isPlaylist
+          ? `https://www.youtube-nocookie.com/embed/videoseries?list=${resourceId}`
+          : `https://www.youtube-nocookie.com/embed/${resourceId}`,
         title: "YouTube embed",
         height: 220,
         allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
@@ -11090,6 +11827,38 @@ function integrationResolveCard(url: string, provider: string) {
     fetchedAt: "2026-06-16T10:00:00Z",
     stale: false,
   };
+}
+
+function integrationProviderFromTestUrl(
+  value: string,
+): "apple_music" | "spotify" | "youtube" | undefined {
+  try {
+    const host = new URL(value).hostname;
+
+    if (host === "open.spotify.com") {
+      return "spotify";
+    }
+
+    if (host === "music.apple.com" || host === "itunes.apple.com") {
+      return "apple_music";
+    }
+
+    if (
+      [
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "music.youtube.com",
+        "youtu.be",
+      ].includes(host)
+    ) {
+      return "youtube";
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
 }
 
 function youtubeResourceIdFromUrl(value: string): string {

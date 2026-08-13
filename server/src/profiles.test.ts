@@ -15,6 +15,7 @@ import {
   profileIntegrationCachePayload,
   profileIntegrationGeneratedCardPayload,
   profileIntegrationNormalizeUrl,
+  profileModuleConfigWithNormalizedSource,
   profileModuleLayoutPayload,
   profilePayloadFromRow,
   profilePayloadWithFeatured,
@@ -142,6 +143,41 @@ describe("profile module type canonicalization", () => {
     expect(supportedProfileModuleType("youtube_video")).toBe("youtube_video");
     expect(supportedProfileModuleType("featured")).toBeNull();
     expect(supportedProfileModuleType("future_unknown")).toBeNull();
+  });
+
+  it("lets uploaded tracks win over stale provider fields on reads", () => {
+    const tracks = [
+      {
+        id: "upload:one",
+        title: "Local song",
+        audio: {
+          mime: "audio/mpeg",
+          size: 2048,
+          url: "/uploads/media/2026/08/profile_music-local.mp3",
+        },
+      },
+    ];
+
+    expect(
+      profileModuleConfigWithNormalizedSource("music_playlist", {
+        integration: {
+          provider: "spotify",
+          resourceId: "stale",
+          resourceType: "playlist",
+          sourceUrl: "https://open.spotify.com/playlist/stale",
+        },
+        label: "My uploads",
+        platform: "spotify",
+        sourceMode: "spotify",
+        tracks,
+        url: "https://open.spotify.com/playlist/stale",
+      }),
+    ).toEqual({
+      label: "My uploads",
+      platform: "custom",
+      sourceMode: "upload",
+      tracks,
+    });
   });
 });
 
@@ -660,7 +696,7 @@ describe("profile integration payloads", () => {
     const modules = await repository.getPublicProfileModules("thia");
 
     expect(resolvePublicMetadata).toHaveBeenCalledWith(
-      "https://twitch.tv/thiabun",
+      "https://www.twitch.tv/thiabun",
       "twitch",
     );
     expect(modules?.find((module) => module.type === "twitch_channel")?.config)
@@ -673,6 +709,108 @@ describe("profile integration payloads", () => {
           },
         },
       });
+  });
+
+  it("uses a Spotify URL instead of stale Apple playlist metadata on profile reads", async () => {
+    const playlistModule = {
+      id: 240,
+      user_id: 1,
+      type: "music_playlist",
+      title: null,
+      config_json: JSON.stringify({
+        canvasSize: "6x2",
+        configured: true,
+        label: "Apple Music playlist",
+        platform: "apple_music",
+        sourceMode: "apple_music",
+        url: "https://open.spotify.com/playlist/25HmqmhPLIsu7PnF6q24lA?si=legacy",
+        integration: {
+          provider: "spotify",
+          resourceType: "playlist",
+          resourceId: "different-playlist",
+          sourceUrl: "https://open.spotify.com/playlist/different-playlist",
+        },
+      }),
+      visibility: "public",
+      position: 4,
+      grid_column: 7,
+      grid_row: 4,
+      grid_col_span: 6,
+      grid_row_span: 2,
+      grid_pinned: 0,
+      status: "active",
+      schema_version: 1,
+      created_at: "2026-07-08 16:51:36",
+      updated_at: "2026-07-09 22:41:10",
+    } satisfies ProfileModuleRow;
+    const pool = {
+      execute: vi.fn(async (sql: string) => {
+        if (sql.includes("INFORMATION_SCHEMA.TABLES")) {
+          return [[{ table_count: 1 }], []];
+        }
+
+        if (sql.includes("INFORMATION_SCHEMA.COLUMNS")) {
+          return [[{ column_count: 1 }], []];
+        }
+
+        if (sql.includes("WHERE u.handle = ?")) {
+          return [[profileRow()], []];
+        }
+
+        if (sql.includes("FROM profile_modules") && sql.includes("visibility = 'public'")) {
+          return [[playlistModule], []];
+        }
+
+        throw new Error(`Unexpected profile SQL: ${sql}`);
+      }),
+    };
+    const sourceUrl = "https://open.spotify.com/playlist/25HmqmhPLIsu7PnF6q24lA";
+    const resolvePublicMetadata = vi.fn<ProfileIntegrationsResolver["resolvePublicMetadata"]>()
+      .mockResolvedValue({
+        provider: "spotify",
+        resourceType: "playlist",
+        resourceId: "25HmqmhPLIsu7PnF6q24lA",
+        resourceKey: "spotify:playlist:25HmqmhPLIsu7PnF6q24lA",
+        sourceUrl,
+        metadata: {
+          title: "Production playlist",
+          subtitle: "Spotify",
+          description: null,
+          imageUrl: null,
+          live: false,
+          stats: {},
+        },
+        embed: {
+          type: "iframe",
+          src: "https://open.spotify.com/embed/playlist/25HmqmhPLIsu7PnF6q24lA?theme=0",
+          title: "Spotify embed",
+          allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+          height: 152,
+        },
+        apiBacked: false,
+        fetchedAt: null,
+        expiresAt: null,
+        staleAt: null,
+      });
+    const repository = createProfilesRepository(pool as unknown as Pool, {
+      resolvePublicMetadata,
+    });
+
+    const modules = await repository.getPublicProfileModules("thia");
+    const playlist = modules?.find((module) => module.id === 240);
+
+    expect(resolvePublicMetadata).toHaveBeenCalledWith(sourceUrl, "spotify");
+    expect(playlist?.config).toMatchObject({
+      platform: "spotify",
+      sourceMode: "spotify",
+      url: sourceUrl,
+      integration: {
+        provider: "spotify",
+        resourceType: "playlist",
+      },
+    });
+    expect(playlist?.layout).toEqual({ column: 7, row: 4, colSpan: 6, rowSpan: 2 });
+    expect(playlist?.visibility).toBe("public");
   });
 
   it("generates YouTube iframe embeds when cached rows have empty embed JSON", () => {
@@ -701,6 +839,39 @@ describe("profile integration payloads", () => {
         type: "iframe",
         src: "https://www.youtube-nocookie.com/embed/watch123",
         title: "YouTube embed",
+      },
+    });
+  });
+
+  it("repairs legacy Apple Music iframe paths in profile cache payloads", () => {
+    const payload = profileIntegrationCachePayload({
+      provider: "apple_music",
+      resource_type: "playlist",
+      resource_id: "pl.u-abc",
+      resource_key: "apple_music:playlist:pl.u-abc",
+      source_url: "https://music.apple.com/no/playlist/my-list/pl.u-abc?l=nb",
+      metadata_json: JSON.stringify({
+        title: "Cached Apple playlist",
+        subtitle: "Apple Music",
+      }),
+      embed_json: JSON.stringify({
+        type: "iframe",
+        src: "https://embed.music.apple.com/us/playlist/pl.u-abc",
+        title: "Apple Music embed",
+        height: 152,
+      }),
+      api_backed: 0,
+      fetched_at: "2026-06-24 12:00:00",
+      expires_at: null,
+      stale_at: null,
+      error_message: null,
+    } as ProfileIntegrationCacheRow);
+
+    expect(payload).toMatchObject({
+      provider: "apple_music",
+      resourceType: "playlist",
+      embed: {
+        src: "https://embed.music.apple.com/no/playlist/my-list/pl.u-abc?l=nb",
       },
     });
   });

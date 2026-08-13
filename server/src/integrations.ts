@@ -8,10 +8,17 @@ import {
 import nacl from "tweetnacl";
 import type { Pool, RowDataPacket } from "mysql2/promise";
 
+import {
+  integrationProviders,
+  normalizeIntegrationUrl,
+  type IntegrationProvider,
+  type IntegrationUrlFailureReason,
+  type NormalizedIntegrationUrl,
+} from "./integration-urls.js";
 import type { RequestSession } from "./sessions.js";
 
-export const integrationProviders = ["spotify", "apple_music", "youtube", "twitch", "github"] as const;
-export type IntegrationProvider = (typeof integrationProviders)[number];
+export { integrationProviders };
+export type { IntegrationProvider };
 
 const integrationTtlSeconds = 3600;
 const twitchIntegrationTtlSeconds = 60;
@@ -237,14 +244,6 @@ interface IntegrationCacheRow extends RowDataPacket {
 
 interface ExistsRow extends RowDataPacket {
   item_count: number | string;
-}
-
-interface NormalizedIntegrationUrl {
-  provider: IntegrationProvider;
-  resourceType: string;
-  resourceId: string;
-  resourceKey: string;
-  sourceUrl: string;
 }
 
 interface OAuthTokenResponse {
@@ -498,8 +497,7 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
     await this.requireStorage();
     rejectUnknownKeys(body, ["url", "provider"]);
     const url = integrationUrl(body.url);
-    const preferredProvider = body.provider === undefined ? null : providerFromInput(String(body.provider));
-    const card = await this.resolveUrl(url, preferredProvider, session.userId);
+    const card = await this.resolveUrl(url, session.userId);
 
     if (card === null) {
       throw new IntegrationRouteError("Choose a supported integration URL.", 422);
@@ -512,9 +510,9 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
     rawUrl: string,
     preferredProvider: string | null,
   ): Promise<IntegrationCardPayload | null> {
-    const provider = preferredProvider === null ? null : providerFromInput(preferredProvider);
+    void preferredProvider;
 
-    return this.resolveUrl(rawUrl, provider, null);
+    return this.resolveUrl(rawUrl, null);
   }
 
   private async ownerPayload(userId: number): Promise<IntegrationOwnerPayload> {
@@ -787,18 +785,18 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
 
   private async resolveUrl(
     rawUrl: string,
-    preferredProvider: IntegrationProvider | null,
     userId: number | null,
   ): Promise<IntegrationCardPayload | null> {
     if (!(await this.storageReady())) {
-      return this.generatedCard(rawUrl, preferredProvider);
+      return this.generatedCard(rawUrl);
     }
 
-    const normalized = normalizeIntegrationUrl(rawUrl, preferredProvider);
+    const normalization = normalizeIntegrationUrl(rawUrl);
 
-    if (normalized === null) {
+    if (!normalization.ok) {
       return null;
     }
+    const normalized = normalization.value;
 
     const cached = await this.cacheRecord(normalized.provider, normalized.resourceKey);
 
@@ -817,7 +815,7 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
         return cachePayload(cached, true);
       }
 
-      const fallback = this.generatedCard(rawUrl, preferredProvider);
+      const fallback = this.generatedCard(rawUrl);
 
       if (fallback !== null) {
         await this.cacheUpsert(fallback, error instanceof Error ? error.message : String(error));
@@ -827,12 +825,13 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
     }
   }
 
-  private generatedCard(rawUrl: string, preferredProvider: IntegrationProvider | null): IntegrationCardPayload | null {
-    const normalized = normalizeIntegrationUrl(rawUrl, preferredProvider);
+  private generatedCard(rawUrl: string): IntegrationCardPayload | null {
+    const normalization = normalizeIntegrationUrl(rawUrl);
 
-    if (normalized === null) {
+    if (!normalization.ok) {
       return null;
     }
+    const normalized = normalization.value;
 
     return this.cardPayload(normalized, fallbackMetadata(normalized), embedPayload(normalized, this.config("twitch")), false);
   }
@@ -1222,7 +1221,7 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
       }
 
       seenUrls.add(url);
-      const card = await this.resolveUrl(url, "spotify", userId);
+      const card = await this.resolveUrl(url, userId);
       items.push(suggestionItem(`spotify:${md5(url)}`, label, description, url, "music", card));
     };
 
@@ -1282,7 +1281,7 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
     const sourceUrl = handle.startsWith("@")
       ? `https://www.youtube.com/${handle.replace(/[^A-Za-z0-9_@.-]/gu, "")}`
       : `https://www.youtube.com/channel/${encodeURIComponent(account.providerAccountId)}`;
-    const card = this.generatedCard(sourceUrl, "youtube");
+    const card = this.generatedCard(sourceUrl);
     const items: IntegrationSuggestionItemPayload[] = [];
     const token = await this.accessToken(userId, "youtube");
 
@@ -1302,7 +1301,7 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
         }
 
         const playlistUrl = `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`;
-        const playlistCard = await this.resolveUrl(playlistUrl, "youtube", userId);
+        const playlistCard = await this.resolveUrl(playlistUrl, userId);
         const title = nestedString(playlist, ["snippet", "title"]) ?? "YouTube playlist";
 
         items.push(suggestionItem(`youtube:playlist:${playlistId}`, title, "YouTube playlist", playlistUrl, "music", playlistCard));
@@ -1335,7 +1334,7 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
 
     const cleanHandle = handle.replace(/^@/u, "");
     const sourceUrl = `https://www.twitch.tv/${encodeURIComponent(cleanHandle)}`;
-    const card = await this.resolveUrl(sourceUrl, "twitch", userId);
+    const card = await this.resolveUrl(sourceUrl, userId);
 
     return [
       suggestionItem(
@@ -1372,7 +1371,7 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
         continue;
       }
 
-      const card = await this.resolveUrl(repo.html_url, "github", userId);
+      const card = await this.resolveUrl(repo.html_url, userId);
       items.push(
         suggestionItem(
           `github:repo:${repo.full_name.toLowerCase()}`,
@@ -1808,157 +1807,35 @@ function tokenScopes(value: unknown): string[] {
   return [];
 }
 
-function normalizeIntegrationUrl(rawUrl: string, preferredProvider: IntegrationProvider | null): NormalizedIntegrationUrl | null {
-  const url = integrationUrl(rawUrl);
-  const parsed = new URL(url);
-  const host = parsed.hostname.toLowerCase();
-  const path = parsed.pathname.replace(/^\/+|\/+$/gu, "");
-  const segments = path === "" ? [] : path.split("/");
-  const provider = preferredProvider ?? providerFromHost(host);
-
-  if (provider === null) {
-    return null;
-  }
-
-  let resourceType = "link";
-  let resourceId = "";
-  let sourceUrl = url;
-
-  if (provider === "spotify" && host === "open.spotify.com" && segments.length >= 2) {
-    resourceType = segments[0]?.toLowerCase() ?? "";
-    resourceId = (segments[1] ?? "").replace(/[^A-Za-z0-9]/gu, "");
-    sourceUrl = `https://open.spotify.com/${resourceType}/${resourceId}`;
-  } else if (provider === "apple_music" && ["music.apple.com", "itunes.apple.com"].includes(host) && segments.length >= 2) {
-    if (path.includes("/artist/")) {
-      resourceType = "artist";
-    } else if (path.includes("/playlist/")) {
-      resourceType = "playlist";
-    } else if (path.includes("/album/")) {
-      resourceType = "album";
-    } else {
-      resourceType = "song";
-    }
-
-    resourceId = lastIdentifier(url);
-  } else if (provider === "youtube" && ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"].includes(host)) {
-    const playlistId = youtubeIdentifier(parsed.searchParams.get("list") ?? "");
-    const firstSegment = segments[0] ?? "";
-    let videoId = "";
-
-    if (host === "youtu.be" && segments[0] !== undefined) {
-      videoId = youtubeIdentifier(segments[0]);
-    } else if (firstSegment === "watch") {
-      videoId = youtubeIdentifier(parsed.searchParams.get("v") ?? "");
-    } else if (["shorts", "live", "embed"].includes(firstSegment) && segments[1] !== undefined) {
-      videoId = youtubeIdentifier(segments[1]);
-    }
-
-    if (videoId !== "") {
-      resourceType = "video";
-      resourceId = videoId;
-      sourceUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(resourceId)}`;
-    } else if (playlistId !== "") {
-      resourceType = "playlist";
-      resourceId = playlistId;
-      sourceUrl = `https://www.youtube.com/playlist?list=${encodeURIComponent(resourceId)}`;
-    } else if (firstSegment.startsWith("@")) {
-      resourceType = "channel";
-      resourceId = youtubeIdentifier(firstSegment, true);
-      sourceUrl = `https://www.youtube.com/${resourceId}`;
-    } else if (firstSegment === "channel" && segments[1] !== undefined) {
-      resourceType = "channel";
-      resourceId = youtubeIdentifier(segments[1]);
-      sourceUrl = `https://www.youtube.com/channel/${encodeURIComponent(resourceId)}`;
-    }
-  } else if (provider === "twitch" && ["twitch.tv", "www.twitch.tv"].includes(host) && segments[0] !== undefined) {
-    resourceType = segments[0] === "videos" && segments[1] !== undefined ? "video" : "channel";
-    resourceId = resourceType === "video" ? segments[1] ?? "" : segments[0];
-  } else if (provider === "github" && ["github.com", "www.github.com"].includes(host) && segments.length >= 2) {
-    resourceType = "repo";
-    resourceId = `${segments[0]}/${segments[1]}`.toLowerCase();
-    sourceUrl = `https://github.com/${resourceId}`;
-  }
-
-  resourceId = resourceId.trim();
-
-  if (resourceId === "") {
-    return null;
-  }
-
-  return {
-    provider,
-    resourceType,
-    resourceId,
-    resourceKey: `${provider}:${resourceType}:${resourceId}`,
-    sourceUrl,
-  };
-}
-
-function providerFromHost(host: string): IntegrationProvider | null {
-  if (host === "open.spotify.com") {
-    return "spotify";
-  }
-
-  if (["music.apple.com", "itunes.apple.com"].includes(host)) {
-    return "apple_music";
-  }
-
-  if (["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"].includes(host)) {
-    return "youtube";
-  }
-
-  if (["twitch.tv", "www.twitch.tv"].includes(host)) {
-    return "twitch";
-  }
-
-  if (["github.com", "www.github.com"].includes(host)) {
-    return "github";
-  }
-
-  return null;
-}
-
-function youtubeIdentifier(value: string, allowHandle = false): string {
-  const trimmed = value.trim();
-
-  if (allowHandle && trimmed.startsWith("@")) {
-    const handle = trimmed.slice(1).replace(/[^A-Za-z0-9._-]/gu, "");
-
-    return handle === "" ? "" : `@${handle}`;
-  }
-
-  return trimmed.replace(/[^A-Za-z0-9_-]/gu, "");
-}
-
 function integrationUrl(value: unknown): string {
-  if (typeof value !== "string") {
-    throw new IntegrationRouteError("Integration URL is invalid.", 422);
+  const normalized = normalizeIntegrationUrl(value);
+
+  if (!normalized.ok) {
+    throw integrationUrlRouteError(normalized.reason);
   }
 
-  const trimmed = value.trim();
-
-  if (trimmed.length > 500 || !validAbsoluteUrl(trimmed)) {
-    throw new IntegrationRouteError("Integration URL is invalid.", 422);
-  }
-
-  if (new URL(trimmed).protocol !== "https:") {
-    throw new IntegrationRouteError("Integration URL must use HTTPS.", 422);
-  }
-
-  return trimmed;
+  return normalized.value.sourceUrl;
 }
 
-function lastIdentifier(url: string): string {
-  const parsed = new URL(url);
-  const queryId = parsed.searchParams.get("i") ?? "";
-
-  if (queryId !== "") {
-    return queryId.replace(/[^A-Za-z0-9._-]/gu, "");
+function integrationUrlRouteError(
+  reason: IntegrationUrlFailureReason,
+): IntegrationRouteError {
+  if (reason === "https_required") {
+    return new IntegrationRouteError("Integration URL must use HTTPS.", 422);
   }
 
-  const parts = parsed.pathname.replace(/^\/+|\/+$/gu, "").split("/").filter(Boolean);
+  if (reason === "credentials_forbidden") {
+    return new IntegrationRouteError(
+      "Integration URL cannot include credentials.",
+      422,
+    );
+  }
 
-  return (parts.at(-1) ?? "").replace(/[^A-Za-z0-9._-]/gu, "");
+  if (reason === "unsupported_host" || reason === "unsupported_resource") {
+    return new IntegrationRouteError("Choose a supported integration URL.", 422);
+  }
+
+  return new IntegrationRouteError("Integration URL is invalid.", 422);
 }
 
 function fallbackMetadata(normalized: NormalizedIntegrationUrl): IntegrationMetadataPayload {
@@ -1970,7 +1847,11 @@ function fallbackMetadata(normalized: NormalizedIntegrationUrl): IntegrationMeta
   } else if (normalized.provider === "twitch") {
     title = normalized.resourceType === "channel" ? `@${normalized.resourceId}` : "Twitch video";
   } else if (normalized.provider === "youtube") {
-    title = normalized.resourceType === "channel" ? normalized.resourceId : "YouTube video";
+    title = normalized.resourceType === "channel"
+      ? normalized.resourceId
+      : normalized.resourceType === "playlist"
+        ? "YouTube playlist"
+        : "YouTube video";
   } else if (normalized.provider === "spotify") {
     title = `Spotify ${normalized.resourceType}`;
   } else if (normalized.provider === "apple_music") {
@@ -2019,7 +1900,8 @@ function embedPayload(
   if (normalized.provider === "spotify") {
     src = `https://open.spotify.com/embed/${encodeURIComponent(normalized.resourceType)}/${encodeURIComponent(normalized.resourceId)}?theme=0`;
   } else if (normalized.provider === "apple_music") {
-    src = `https://embed.music.apple.com/us/${encodeURIComponent(normalized.resourceType)}/${encodeURIComponent(normalized.resourceId)}`;
+    const source = new URL(normalized.sourceUrl);
+    src = `https://embed.music.apple.com${source.pathname}${source.search}`;
   } else if (normalized.provider === "youtube") {
     if (normalized.resourceType === "video") {
       src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(normalized.resourceId)}`;
@@ -2063,7 +1945,16 @@ function embedHeight(normalized: NormalizedIntegrationUrl): number {
 
 function cachePayload(row: IntegrationCacheRow, stale = false): IntegrationCardPayload {
   const metadata = decodeObject(row.metadata_json);
-  const embed = decodeObject(row.embed_json);
+  const normalization = normalizeIntegrationUrl(row.source_url);
+  const regeneratedEmbed =
+    normalization.ok && normalization.value.provider === "apple_music"
+      ? embedPayload(normalization.value, {})
+      : null;
+  const cachedEmbed = decodeObject(row.embed_json);
+  const embed = regeneratedEmbed ??
+    (Object.keys(cachedEmbed).length === 0
+      ? null
+      : cachedEmbed as unknown as IntegrationEmbedPayload);
 
   return {
     provider: providerFromInput(row.provider),
@@ -2072,7 +1963,7 @@ function cachePayload(row: IntegrationCacheRow, stale = false): IntegrationCardP
     resourceKey: row.resource_key,
     sourceUrl: row.source_url,
     metadata: normalizeMetadata(metadata),
-    embed: Object.keys(embed).length === 0 ? null : embed as unknown as IntegrationEmbedPayload,
+    embed,
     apiBacked: Boolean(row.api_backed),
     fetchedAt: row.fetched_at,
     expiresAt: row.expires_at,

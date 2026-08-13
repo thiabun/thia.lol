@@ -713,7 +713,8 @@ function persistedMusicPayload(
     config: overrides.config ?? {
       label: "Focus track",
       platform: "spotify",
-      url: "https://open.spotify.com/track/profile-test?si=ignored",
+      sourceMode: "spotify",
+      url: "https://open.spotify.com/track/profile-test",
     },
     visibility: overrides.visibility ?? "public",
     position: 2,
@@ -799,6 +800,20 @@ function musicRow(overrides: { type?: string } = {}) {
     schema_version: 1,
     created_at: "2026-06-24 11:00:00",
     updated_at: "2026-06-24 12:00:00",
+  };
+}
+
+function playlistRow() {
+  return {
+    ...musicRow({ type: "music_playlist" }),
+    title: "Playlist",
+    config_json: JSON.stringify({
+      configured: true,
+      label: "Saved playlist",
+      platform: "apple_music",
+      sourceMode: "apple_music",
+      url: "https://open.spotify.com/playlist/editorPersist?si=stale",
+    }),
   };
 }
 
@@ -942,7 +957,8 @@ describe("editor profile module payloads", () => {
     expect(modules).toHaveLength(1);
     expect(modules[0]?.config).toMatchObject({
       platform: "spotify",
-      url: "https://open.spotify.com/track/profile-test?si=ignored",
+      sourceMode: "spotify",
+      url: "https://open.spotify.com/track/profile-test",
       integration: {
         provider: "spotify",
         resourceType: "track",
@@ -959,6 +975,159 @@ describe("editor profile module payloads", () => {
     expect(
       calls.some((call) => call.query.includes("FROM profile_integration_metadata_cache")),
     ).toBe(true);
+  });
+
+  it("derives playlist provider fields from the URL on direct and draft updates", async () => {
+    const { calls, draftJson, pool } = fakePool({
+      moduleRows: [profileInfoRow(1), playlistRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await repository.updateModule(session, 20, {
+      config: {
+        configured: true,
+        integration: { provider: "apple_music" },
+        label: "Saved playlist",
+        platform: "apple_music",
+        sourceMode: "apple_music",
+        url: "https://open.spotify.com/playlist/editorPersist?si=ignored",
+      },
+    });
+    const directUpdate = calls.find(
+      (call) =>
+        call.query.includes("UPDATE profile_modules") &&
+        call.query.includes("config_json = ?") &&
+        !call.query.includes("type = ?"),
+    );
+    const directConfig = JSON.parse(String(directUpdate?.params?.[0])) as Record<string, unknown>;
+
+    expect(directConfig).toMatchObject({
+      platform: "spotify",
+      sourceMode: "spotify",
+      url: "https://open.spotify.com/playlist/editorPersist",
+    });
+    expect(directConfig).not.toHaveProperty("integration");
+
+    const opened = await repository.getCanvasDraft(session.userId);
+    const saved = await repository.updateCanvasDraft(session, {
+      expectedRevision: opened.revision,
+      modules: opened.modules.map((module) =>
+        module.id === 20
+          ? {
+              ...module,
+              config: {
+                ...module.config,
+                integration: { provider: "apple_music" },
+                platform: "apple_music",
+                sourceMode: "upload",
+                url: "https://open.spotify.com/playlist/draftPersist?si=ignored",
+              },
+            }
+          : module,
+      ),
+    });
+    const savedPlaylist = saved.modules.find((module) => module.id === 20);
+    const stored = JSON.parse(draftJson() ?? "{}") as {
+      modules?: Array<{ config?: Record<string, unknown>; id?: number }>;
+    };
+    const storedPlaylist = stored.modules?.find((module) => module.id === 20);
+
+    expect(savedPlaylist?.config).toMatchObject({
+      platform: "spotify",
+      sourceMode: "spotify",
+      url: "https://open.spotify.com/playlist/draftPersist",
+    });
+    expect(storedPlaylist?.config).toMatchObject({
+      platform: "spotify",
+      sourceMode: "spotify",
+      url: "https://open.spotify.com/playlist/draftPersist",
+    });
+    expect(storedPlaylist?.config).not.toHaveProperty("integration");
+  });
+
+  it.each([
+    {
+      canonicalUrl: "https://music.apple.com/no/playlist/editor/pl.u-editor?l=nb",
+      expectedProvider: "apple_music",
+      inputUrl: "https://music.apple.com/no/playlist/editor/pl.u-editor?l=nb#shared",
+    },
+    {
+      canonicalUrl: "https://www.youtube.com/playlist?list=PLeditorPersist",
+      expectedProvider: "youtube",
+      inputUrl: "https://music.youtube.com/playlist?list=PLeditorPersist&feature=share",
+    },
+  ])(
+    "rewrites $expectedProvider playlist fields on direct updates",
+    async ({ canonicalUrl, expectedProvider, inputUrl }) => {
+      const { calls, pool } = fakePool({
+        moduleRows: [profileInfoRow(1), playlistRow()],
+      });
+      const repository = createEditorRepository(pool as never);
+
+      await repository.updateModule(session, 20, {
+        config: {
+          configured: true,
+          integration: { provider: "spotify" },
+          label: "Saved playlist",
+          platform: "spotify",
+          sourceMode: "upload",
+          url: inputUrl,
+        },
+      });
+      const directUpdate = calls.find(
+        (call) =>
+          call.query.includes("UPDATE profile_modules") &&
+          call.query.includes("config_json = ?") &&
+          !call.query.includes("type = ?"),
+      );
+      const directConfig = JSON.parse(
+        String(directUpdate?.params?.[0]),
+      ) as Record<string, unknown>;
+
+      expect(directConfig).toMatchObject({
+        platform: expectedProvider,
+        sourceMode: expectedProvider,
+        url: canonicalUrl,
+      });
+      expect(directConfig).not.toHaveProperty("integration");
+    },
+  );
+
+  it("rejects malformed and unsupported playlist URLs before persistence", async () => {
+    const { calls, pool } = fakePool({
+      moduleRows: [profileInfoRow(1), playlistRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await expect(
+      repository.updateModule(session, 20, {
+        config: {
+          label: "Unsupported playlist",
+          url: "https://example.com/not-a-playlist",
+        },
+      }),
+    ).rejects.toMatchObject({
+      message: "Use a Spotify, Apple Music, or YouTube playlist URL.",
+      statusCode: 422,
+    });
+    await expect(
+      repository.updateModule(session, 20, {
+        config: {
+          label: "Malformed playlist",
+          url: "not a URL",
+        },
+      }),
+    ).rejects.toMatchObject({
+      message: "Playlist URL is invalid.",
+      statusCode: 422,
+    });
+    expect(
+      calls.some(
+        (call) =>
+          call.query.includes("UPDATE profile_modules") &&
+          call.query.includes("config_json = ?"),
+      ),
+    ).toBe(false);
   });
 
   it("repairs non-positive positions when reading stored canvas drafts", async () => {
@@ -2612,6 +2781,73 @@ describe("editor profile module payloads", () => {
 
     expect(JSON.parse(String(musicUpdate?.configJson))).toMatchObject(nextConfig);
     expect(musicModule?.config).toMatchObject(nextConfig);
+  });
+
+  it("normalizes stale playlist provider fields again at canvas commit", async () => {
+    const staleConfig = {
+      configured: true,
+      label: "Commit playlist",
+      platform: "apple_music",
+      sourceMode: "upload",
+      url: "https://open.spotify.com/playlist/commitPersist?si=ignored",
+    };
+    const { moduleUpdates, pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [
+          profileInfoPayload(1),
+          persistedMusicPayload({ config: staleConfig, type: "music_playlist" }),
+        ],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1), playlistRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await repository.commitCanvasDraft(session);
+    const playlistUpdate = moduleUpdates.find((update) => update.id === 20);
+    const storedConfig = JSON.parse(String(playlistUpdate?.configJson)) as Record<string, unknown>;
+
+    expect(storedConfig).toMatchObject({
+      label: "Commit playlist",
+      platform: "spotify",
+      sourceMode: "spotify",
+      url: "https://open.spotify.com/playlist/commitPersist",
+    });
+  });
+
+  it("rejects malformed playlist URLs again at canvas commit", async () => {
+    const { moduleUpdates, pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [
+          profileInfoPayload(1),
+          persistedMusicPayload({
+            config: {
+              configured: true,
+              label: "Malformed commit playlist",
+              platform: "apple_music",
+              sourceMode: "apple_music",
+              url: "not a URL",
+            },
+            type: "music_playlist",
+          }),
+        ],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1), playlistRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await expect(repository.commitCanvasDraft(session)).rejects.toMatchObject({
+      message: "Playlist URL is invalid.",
+      statusCode: 422,
+    });
+    expect(moduleUpdates).toHaveLength(0);
   });
 
   it("canonicalizes existing legacy music modules during canvas commit", async () => {
