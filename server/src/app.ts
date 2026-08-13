@@ -50,6 +50,9 @@ import {
   type ChatMessagesPayload,
   type ChatMessagePayload,
   type ChatReadPayload,
+  type ChatReactionDetailsPayload,
+  type ChatReactionMutationPayload,
+  type ChatRealtimeEventPayload,
   type ChatRepository,
   type ChatUserPayload,
   type RoomChannelMessagesPayload,
@@ -235,6 +238,10 @@ const uploadParamsSchema = z.object({
 
 const chatConversationParamsSchema = z.object({
   id: z.string(),
+});
+
+const chatMessageParamsSchema = z.object({
+  messageId: z.string(),
 });
 
 const gifParamsSchema = z.object({
@@ -1857,6 +1864,18 @@ function positiveIntegerParam(value: string): number | null {
   return Number.isSafeInteger(number) && number > 0 ? number : null;
 }
 
+function writeServerSentEvent(
+  reply: FastifyReply,
+  eventName: "ready" | "message.reactions.updated",
+  data: unknown,
+): void {
+  if (reply.raw.destroyed || reply.raw.writableEnded) {
+    return;
+  }
+
+  reply.raw.write(`event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
 export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
   const app = Fastify({
     genReqId: generateRequestId,
@@ -2953,6 +2972,186 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       "chat.conversations.read",
       (repository, session) => repository.markConversationRead(session.userId, conversationId),
     );
+  });
+
+  app.post("/chat/messages/:messageId/reactions", async (request, reply) => {
+    const parsedParams = chatMessageParamsSchema.safeParse(request.params);
+    const messageId = parsedParams.success
+      ? positiveIntegerParam(parsedParams.data.messageId)
+      : null;
+
+    if (messageId === null) {
+      return reply.status(404).send(errorPayload("Message not found."));
+    }
+
+    return withAuthenticatedChatMutationRoute<ChatReactionMutationPayload>(
+      request,
+      reply,
+      dependencies,
+      "chat.message-reactions.create",
+      (repository, session, body) =>
+        repository.addMessageReaction(
+          session,
+          messageId,
+          typeof body.emoji === "string" ? body.emoji : "",
+        ),
+    );
+  });
+
+  app.delete("/chat/messages/:messageId/reactions", async (request, reply) => {
+    const parsedParams = chatMessageParamsSchema.safeParse(request.params);
+    const messageId = parsedParams.success
+      ? positiveIntegerParam(parsedParams.data.messageId)
+      : null;
+
+    if (messageId === null) {
+      return reply.status(404).send(errorPayload("Message not found."));
+    }
+
+    return withAuthenticatedChatMutationRoute<ChatReactionMutationPayload>(
+      request,
+      reply,
+      dependencies,
+      "chat.message-reactions.delete",
+      (repository, session, body) =>
+        repository.removeMessageReaction(
+          session,
+          messageId,
+          typeof body.emoji === "string" ? body.emoji : "",
+        ),
+    );
+  });
+
+  app.get("/chat/messages/:messageId/reactions/details", async (request, reply) => {
+    const parsedParams = chatMessageParamsSchema.safeParse(request.params);
+    const messageId = parsedParams.success
+      ? positiveIntegerParam(parsedParams.data.messageId)
+      : null;
+
+    if (messageId === null) {
+      return reply.status(404).send(errorPayload("Message not found."));
+    }
+
+    return withAuthenticatedChatRoute<ChatReactionDetailsPayload>(
+      request,
+      reply,
+      dependencies,
+      "chat.message-reactions.details",
+      (repository, session) => repository.messageReactionDetails(session, messageId),
+    );
+  });
+
+  app.get("/chat/conversations/:id/events", async (request, reply) => {
+    const parsedParams = chatConversationParamsSchema.safeParse(request.params);
+    const conversationId = parsedParams.success
+      ? positiveIntegerParam(parsedParams.data.id)
+      : null;
+
+    if (conversationId === null) {
+      return reply.status(404).send(errorPayload("Conversation not found."));
+    }
+
+    if (dependencies.sessionsRepository === undefined || dependencies.chatRepository === undefined) {
+      return internalError(
+        request,
+        reply,
+        "chat.conversation-events",
+        new Error("Missing authenticated chat event stream dependency."),
+      );
+    }
+
+    try {
+      const session = await dependencies.sessionsRepository.currentSession(
+        request.headers.cookie,
+      );
+
+      if (session === null) {
+        return reply.status(401).send(errorPayload("Unauthenticated."));
+      }
+
+      const pendingEvents: ChatRealtimeEventPayload[] = [];
+      let streaming = false;
+      const unsubscribe = await dependencies.chatRepository.subscribeToConversationEvents(
+        session,
+        conversationId,
+        (event) => {
+          if (streaming) {
+            writeServerSentEvent(reply, "message.reactions.updated", event);
+          } else {
+            pendingEvents.push(event);
+          }
+        },
+      );
+
+      let cleanedUp = false;
+      const streamState: { heartbeat?: ReturnType<typeof setInterval> } = {};
+      const cleanup = () => {
+        if (cleanedUp) {
+          return;
+        }
+
+        cleanedUp = true;
+
+        if (streamState.heartbeat !== undefined) {
+          clearInterval(streamState.heartbeat);
+        }
+
+        unsubscribe();
+      };
+
+      request.raw.once("aborted", cleanup);
+      reply.raw.once("close", cleanup);
+      reply.hijack();
+
+      if (request.raw.aborted || reply.raw.destroyed) {
+        cleanup();
+        return reply;
+      }
+
+      reply.raw.statusCode = 200;
+      reply.raw.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+      reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
+      reply.raw.setHeader("Connection", "keep-alive");
+      reply.raw.setHeader("X-Accel-Buffering", "no");
+      reply.raw.setHeader(requestIdHeader, request.id);
+      reply.raw.flushHeaders();
+
+      if (cleanedUp || reply.raw.destroyed || reply.raw.writableEnded) {
+        cleanup();
+        return reply;
+      }
+
+      streamState.heartbeat = setInterval(() => {
+        if (!reply.raw.destroyed && !reply.raw.writableEnded) {
+          reply.raw.write(": heartbeat\n\n");
+        }
+      }, 20_000);
+      streaming = true;
+      writeServerSentEvent(reply, "ready", { conversationId });
+
+      for (const event of pendingEvents) {
+        writeServerSentEvent(reply, "message.reactions.updated", event);
+      }
+
+      return reply;
+    } catch (error) {
+      if (error instanceof ChatRouteError) {
+        return reply.status(error.statusCode).send(errorPayload(error.message));
+      }
+
+      if (error instanceof ChatStorageNotReadyError) {
+        return sendRouteError(
+          request,
+          reply,
+          "chat.conversation-events",
+          503,
+          errorPayload(error.message),
+          error,
+        );
+      }
+
+      return internalError(request, reply, "chat.conversation-events", error);
+    }
   });
 
   app.get("/rooms/:slug/channels", async (request, reply) => {

@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import type { Pool } from "mysql2/promise";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   authSessionPayload,
+  createPrivateReadsRepository,
   csrfTokenForSession,
   notificationConversationId,
   notificationIdsFromPayload,
@@ -11,6 +13,7 @@ import {
   PrivateRouteError,
   settingsPostKind,
 } from "./private.js";
+import { hashPhpPassword } from "./passwords.js";
 import type { RequestSession } from "./sessions.js";
 
 const session: RequestSession = {
@@ -219,5 +222,54 @@ describe("private preview notification mapping", () => {
       },
       targetUrl: "/@thia",
     });
+  });
+});
+
+describe("private account data export", () => {
+  it("includes the requesting user's message reactions when storage exists", async () => {
+    const passwordHash = await hashPhpPassword("correct-password");
+    const execute = vi.fn(async (query: string, params?: unknown[]) => {
+      if (query.includes("SELECT password_hash") && query.includes("FROM users")) {
+        return [[{ password_hash: passwordHash }], []];
+      }
+
+      if (query.includes("INFORMATION_SCHEMA.TABLES")) {
+        return [[{ table_count: params?.[0] === "message_reactions" ? 1 : 0 }], []];
+      }
+
+      if (query.includes("FROM message_reactions")) {
+        return [[{
+          message_id: 99,
+          emoji: "👍",
+          created_at: "2026-08-13 12:00:00",
+        }], []];
+      }
+
+      return [[], []];
+    });
+    const repository = createPrivateReadsRepository(
+      { execute } as unknown as Pool,
+      {
+        csrfSecret: "secret",
+        encryptionConfigured: false,
+        encryptionAvailable: true,
+      },
+    );
+
+    const payload = await repository.exportAccountData(session, {
+      currentPassword: "correct-password",
+    });
+
+    expect(payload.messages.reactions).toEqual([
+      {
+        message_id: 99,
+        emoji: "👍",
+        created_at: "2026-08-13 12:00:00",
+      },
+    ]);
+    expect(execute).toHaveBeenCalledWith(
+      expect.stringContaining("FROM message_reactions"),
+      [session.userId],
+    );
   });
 });

@@ -49,7 +49,7 @@ Current foundation includes:
 - follows, followers, following, and moots
 - rooms with creation, editing, joining, owners, and moderators
 - notifications and Web Push foundations
-- moots-only chat foundation
+- moots-only direct chat and Room Chat, with persistent emoji reactions
 - badges and featured badges
 - reports and moderation foundation
 - legal, privacy, cookie, copyright, and community guideline pages

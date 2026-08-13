@@ -5,6 +5,12 @@ import type {
   ChatConversation,
   ChatMessage,
   ChatMessageAttachment,
+  ChatMessageReactionCount,
+  ChatMessageReactionDetails,
+  ChatMessageReactionDetailsGroup,
+  ChatMessageReactionEvent,
+  ChatMessageReactionMutationResult,
+  ChatMessageReactionSummary,
   ChatMessagesResult,
   ChatMoot,
   GifAttachment,
@@ -148,9 +154,14 @@ type ApiPostShareSummary = Omit<PostShareSummary, "room"> & {
   room?: ApiRoom | null;
 };
 
-type ApiChatMessage = Omit<ChatMessage, "attachments" | "bodyEntities"> & {
+type ApiChatMessage = Omit<
+  ChatMessage,
+  "attachments" | "bodyEntities" | "reactions" | "reactionVersion"
+> & {
   attachments?: unknown;
   bodyEntities?: unknown;
+  reactions?: unknown;
+  reactionVersion?: unknown;
 };
 
 type ApiChatMessagesResult = Omit<ChatMessagesResult, "messages"> & {
@@ -2185,6 +2196,38 @@ export function sendChatMessage(
   ).then(normalizeChatMessage);
 }
 
+export function addChatMessageReaction(
+  messageId: number,
+  emoji: string,
+  csrfToken: string,
+): Promise<ChatMessageReactionMutationResult> {
+  return apiPost<unknown>(
+    `/chat/messages/${messageId}/reactions`,
+    { emoji },
+    csrfToken,
+  ).then((value) => normalizeChatMessageReactionMutation(value, emoji));
+}
+
+export function removeChatMessageReaction(
+  messageId: number,
+  emoji: string,
+  csrfToken: string,
+): Promise<ChatMessageReactionMutationResult> {
+  return apiDelete<unknown>(
+    `/chat/messages/${messageId}/reactions`,
+    csrfToken,
+    { emoji },
+  ).then((value) => normalizeChatMessageReactionMutation(value, emoji));
+}
+
+export function getChatMessageReactionDetails(
+  messageId: number,
+): Promise<ChatMessageReactionDetails> {
+  return apiGet<unknown>(`/chat/messages/${messageId}/reactions/details`).then(
+    normalizeChatMessageReactionDetails,
+  );
+}
+
 export function markChatConversationRead(
   conversationId: number,
   csrfToken: string,
@@ -3952,7 +3995,235 @@ function normalizeChatMessage(message: ApiChatMessage): ChatMessage {
     ...message,
     bodyEntities: normalizeRichTextEntities(message.bodyEntities),
     attachments: normalizeChatMessageAttachments(message.attachments),
+    reactions:
+      message.deletedAt == null
+        ? normalizeChatMessageReactionSummaries(message.reactions)
+        : [],
+    reactionVersion: nonnegativeInteger(message.reactionVersion),
   };
+}
+
+export const chatMessageReactionEventName = "message.reactions.updated";
+
+export function normalizeChatMessageReactionSummaries(
+  value: unknown,
+): ChatMessageReactionSummary[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const reactions = new Map<string, ChatMessageReactionSummary>();
+
+  for (const candidate of value) {
+    const reaction = apiObject(candidate);
+    const emoji = reactionEmoji(reaction?.emoji);
+
+    if (!reaction || !emoji) {
+      continue;
+    }
+
+    const reactedByMe = reaction.reactedByMe === true;
+    const count = Math.max(
+      nonnegativeInteger(reaction.count),
+      reactedByMe ? 1 : 0,
+    );
+
+    if (count === 0) {
+      reactions.delete(emoji);
+      continue;
+    }
+
+    reactions.set(emoji, { emoji, count, reactedByMe });
+  }
+
+  return [...reactions.values()];
+}
+
+export function normalizeChatMessageReactionEvent(
+  value: unknown,
+): ChatMessageReactionEvent | null {
+  const event = apiObject(value);
+
+  if (
+    !event ||
+    event.schemaVersion !== 1 ||
+    event.type !== chatMessageReactionEventName ||
+    !positiveInteger(event.conversationId) ||
+    !positiveInteger(event.messageId) ||
+    !positiveInteger(event.actorUserId)
+  ) {
+    return null;
+  }
+
+  const emoji = reactionEmoji(event.emoji);
+
+  if (!emoji) {
+    return null;
+  }
+
+  return {
+    schemaVersion: 1,
+    type: chatMessageReactionEventName,
+    conversationId: event.conversationId,
+    messageId: event.messageId,
+    reactionVersion: nonnegativeInteger(event.reactionVersion),
+    actorUserId: event.actorUserId,
+    emoji,
+    reacted: event.reacted === true,
+    reactions: normalizeChatMessageReactionCounts(event.reactions),
+  };
+}
+
+function normalizeChatMessageReactionMutation(
+  value: unknown,
+  requestedEmoji: string,
+): ChatMessageReactionMutationResult {
+  const result = apiObject(value);
+
+  if (!result) {
+    throw new Error("Invalid message reaction response.");
+  }
+
+  const reaction = apiObject(result.reaction);
+  const emoji = reactionEmoji(reaction?.emoji) ?? reactionEmoji(requestedEmoji);
+
+  if (!emoji) {
+    throw new Error("Invalid message reaction response.");
+  }
+
+  if (
+    !positiveInteger(result.messageId) ||
+    !positiveInteger(result.conversationId)
+  ) {
+    throw new Error("Invalid message reaction response.");
+  }
+
+  return {
+    messageId: result.messageId,
+    conversationId: result.conversationId,
+    changed: result.changed === true,
+    reactionVersion: nonnegativeInteger(result.reactionVersion),
+    reaction: {
+      emoji,
+      reacted: reaction?.reacted === true,
+    },
+    reactions: normalizeChatMessageReactionSummaries(result.reactions),
+  };
+}
+
+function normalizeChatMessageReactionDetails(
+  value: unknown,
+): ChatMessageReactionDetails {
+  const result = apiObject(value);
+
+  if (!result) {
+    throw new Error("Invalid message reaction details response.");
+  }
+
+  if (
+    !positiveInteger(result.messageId) ||
+    !positiveInteger(result.conversationId)
+  ) {
+    throw new Error("Invalid message reaction details response.");
+  }
+
+  const groupsValue = Array.isArray(result.groups)
+    ? result.groups
+    : Array.isArray(result.reactions)
+      ? result.reactions
+      : [];
+  const groups: ChatMessageReactionDetailsGroup[] = [];
+  const seenEmoji = new Set<string>();
+
+  for (const candidate of groupsValue) {
+    const group = apiObject(candidate);
+    const emoji = reactionEmoji(group?.emoji);
+
+    if (!group || !emoji || seenEmoji.has(emoji)) {
+      continue;
+    }
+
+    const seenUsers = new Set<number>();
+    const users = Array.isArray(group.users)
+      ? group.users.filter((user): user is User => {
+          if (!isUserLike(user) || seenUsers.has(user.id)) {
+            return false;
+          }
+
+          seenUsers.add(user.id);
+          return true;
+        })
+      : [];
+    const count = Math.max(nonnegativeInteger(group.count), users.length);
+
+    if (count === 0) {
+      continue;
+    }
+
+    seenEmoji.add(emoji);
+    groups.push({
+      emoji,
+      count,
+      users,
+      ...(typeof group.reactedByMe === "boolean"
+        ? { reactedByMe: group.reactedByMe }
+        : {}),
+    });
+  }
+
+  return {
+    messageId: result.messageId,
+    conversationId: result.conversationId,
+    reactionVersion: nonnegativeInteger(result.reactionVersion),
+    truncated: result.truncated === true,
+    groups,
+  };
+}
+
+function normalizeChatMessageReactionCounts(
+  value: unknown,
+): ChatMessageReactionCount[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const reactions = new Map<string, ChatMessageReactionCount>();
+
+  for (const candidate of value) {
+    const reaction = apiObject(candidate);
+    const emoji = reactionEmoji(reaction?.emoji);
+    const count = nonnegativeInteger(reaction?.count);
+
+    if (!emoji || count === 0) {
+      if (emoji) {
+        reactions.delete(emoji);
+      }
+      continue;
+    }
+
+    reactions.set(emoji, { emoji, count });
+  }
+
+  return [...reactions.values()];
+}
+
+function reactionEmoji(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const emoji = value.trim().normalize("NFC");
+  return emoji !== "" && emoji.length <= 64 ? emoji : null;
+}
+
+function nonnegativeInteger(value: unknown): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? Math.floor(value)
+    : 0;
+}
+
+function positiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
 function normalizeChatMessageAttachments(value: unknown): ChatMessageAttachment[] {

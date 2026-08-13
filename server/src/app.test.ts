@@ -53,6 +53,13 @@ import {
   type AdminGrowthMetricsPayload,
   type GrowthRepository,
 } from "./growth.js";
+import {
+  ChatRouteError,
+  type ChatReactionDetailsPayload,
+  type ChatReactionMutationPayload,
+  type ChatRealtimeEventPayload,
+  type ChatRepository,
+} from "./chat.js";
 import type {
   DiscoverPersonPayload,
   HomeFeedPayload,
@@ -600,6 +607,72 @@ function sessionsRepositoryMock(overrides: Partial<SessionsRepository> = {}): Se
   };
 }
 
+const chatReactionMutationPayload: ChatReactionMutationPayload = {
+  messageId: 99,
+  conversationId: 12,
+  changed: true,
+  reactionVersion: 2,
+  reaction: {
+    emoji: "👍",
+    reacted: true,
+  },
+  reactions: [
+    {
+      emoji: "👍",
+      count: 2,
+      reactedByMe: true,
+    },
+  ],
+};
+
+const chatReactionDetailsPayload: ChatReactionDetailsPayload = {
+  messageId: 99,
+  conversationId: 12,
+  reactionVersion: 2,
+  reactions: [
+    {
+      emoji: "👍",
+      count: 2,
+      reactedByMe: true,
+      users: [roomMember.user],
+    },
+  ],
+  truncated: false,
+};
+
+const chatRealtimeEventPayload: ChatRealtimeEventPayload = {
+  schemaVersion: 1,
+  type: "message.reactions.updated",
+  messageId: 99,
+  conversationId: 12,
+  actorUserId: 42,
+  emoji: "👍",
+  reacted: true,
+  reactionVersion: 2,
+  reactions: [
+    {
+      emoji: "👍",
+      count: 2,
+    },
+  ],
+};
+
+function chatRepositoryMock(overrides: Partial<ChatRepository> = {}): ChatRepository {
+  return {
+    addMessageReaction: vi.fn().mockResolvedValue(chatReactionMutationPayload),
+    removeMessageReaction: vi.fn().mockResolvedValue({
+      ...chatReactionMutationPayload,
+      reaction: {
+        ...chatReactionMutationPayload.reaction,
+        reacted: false,
+      },
+    }),
+    messageReactionDetails: vi.fn().mockResolvedValue(chatReactionDetailsPayload),
+    subscribeToConversationEvents: vi.fn().mockResolvedValue(vi.fn()),
+    ...overrides,
+  } as unknown as ChatRepository;
+}
+
 function uploadServiceMock(overrides: Partial<UploadService> = {}): UploadService {
   return {
     store: vi.fn().mockResolvedValue({
@@ -886,6 +959,7 @@ const accountDataExportPayload: AccountDataExportPayload = {
   },
   messages: {
     sentMessages: [],
+    reactions: [],
   },
   moderation: {
     submittedReports: [],
@@ -3471,6 +3545,297 @@ describe("Node API social and content mutation preview routes", () => {
       ok: false,
       error: "Room membership storage is not ready. Run pending migrations.",
     });
+  });
+});
+
+describe("Node API chat reaction routes", () => {
+  it("requires authentication before CSRF or event streaming", async () => {
+    const repository = chatRepositoryMock();
+    const app = buildApp({
+      chatRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock({
+        currentSession: vi.fn().mockResolvedValue(null),
+      }),
+    });
+
+    for (const [method, url] of [
+      ["POST", "/chat/messages/99/reactions"],
+      ["DELETE", "/chat/messages/99/reactions"],
+      ["GET", "/chat/messages/99/reactions/details"],
+      ["GET", "/chat/conversations/12/events"],
+    ] as const) {
+      const response = await app.inject({
+        method,
+        url,
+        payload: method === "GET" ? undefined : { emoji: "👍" },
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toEqual({
+        ok: false,
+        error: "Unauthenticated.",
+      });
+    }
+
+    expect(repository.addMessageReaction).not.toHaveBeenCalled();
+    expect(repository.removeMessageReaction).not.toHaveBeenCalled();
+    expect(repository.messageReactionDetails).not.toHaveBeenCalled();
+    expect(repository.subscribeToConversationEvents).not.toHaveBeenCalled();
+  });
+
+  it("requires a valid CSRF token for reaction mutations", async () => {
+    const repository = chatRepositoryMock();
+    const app = buildApp({
+      chatRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const missing = await app.inject({
+      method: "POST",
+      url: "/chat/messages/99/reactions",
+      payload: { emoji: "👍" },
+    });
+    const invalid = await app.inject({
+      method: "DELETE",
+      url: "/chat/messages/99/reactions",
+      headers: {
+        "x-csrf-token": "wrong-token",
+      },
+      payload: { emoji: "👍" },
+    });
+
+    expect(missing.statusCode).toBe(403);
+    expect(missing.json()).toEqual({
+      ok: false,
+      error: "CSRF token is required.",
+    });
+    expect(invalid.statusCode).toBe(403);
+    expect(invalid.json()).toEqual({
+      ok: false,
+      error: "Invalid CSRF token.",
+    });
+    expect(repository.addMessageReaction).not.toHaveBeenCalled();
+    expect(repository.removeMessageReaction).not.toHaveBeenCalled();
+  });
+
+  it("adds, removes, and reads reaction details through authenticated wrappers", async () => {
+    const repository = chatRepositoryMock();
+    const app = buildApp({
+      chatRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const add = await app.inject({
+      method: "POST",
+      url: "/chat/messages/99/reactions",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: { emoji: "👍" },
+    });
+    const remove = await app.inject({
+      method: "DELETE",
+      url: "/chat/messages/99/reactions",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: { emoji: "👍" },
+    });
+    const details = await app.inject({
+      method: "GET",
+      url: "/chat/messages/99/reactions/details",
+    });
+
+    expect(add.statusCode).toBe(200);
+    expect(add.json()).toEqual({
+      ok: true,
+      data: chatReactionMutationPayload,
+    });
+    expect(remove.statusCode).toBe(200);
+    expect(remove.json()).toEqual({
+      ok: true,
+      data: {
+        ...chatReactionMutationPayload,
+        reaction: {
+          ...chatReactionMutationPayload.reaction,
+          reacted: false,
+        },
+      },
+    });
+    expect(details.statusCode).toBe(200);
+    expect(details.json()).toEqual({
+      ok: true,
+      data: chatReactionDetailsPayload,
+    });
+    expect(repository.addMessageReaction).toHaveBeenCalledWith(session, 99, "👍");
+    expect(repository.removeMessageReaction).toHaveBeenCalledWith(session, 99, "👍");
+    expect(repository.messageReactionDetails).toHaveBeenCalledWith(session, 99);
+  });
+
+  it("maps reaction validation failures to a 422 JSON response", async () => {
+    const repository = chatRepositoryMock({
+      addMessageReaction: vi
+        .fn()
+        .mockRejectedValue(new ChatRouteError("Reaction must be exactly one emoji.", 422)),
+    });
+    const app = buildApp({
+      chatRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/chat/messages/99/reactions",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: { emoji: "not emoji" },
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Reaction must be exactly one emoji.",
+    });
+  });
+
+  it("returns 404 for invalid message and conversation ids", async () => {
+    const app = buildApp();
+
+    for (const [method, url] of [
+      ["POST", "/chat/messages/not-a-number/reactions"],
+      ["DELETE", "/chat/messages/0/reactions"],
+      ["GET", "/chat/messages/9007199254740992/reactions/details"],
+      ["GET", "/chat/conversations/not-a-number/events"],
+    ] as const) {
+      const response = await app.inject({
+        method,
+        url,
+        payload: method === "GET" ? undefined : { emoji: "👍" },
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toHaveProperty("ok", false);
+    }
+  });
+
+  it("returns subscription authorization failures before opening an event stream", async () => {
+    const repository = chatRepositoryMock({
+      subscribeToConversationEvents: vi
+        .fn()
+        .mockRejectedValue(new ChatRouteError("Conversation not found.", 404)),
+    });
+    const app = buildApp({
+      chatRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/chat/conversations/12/events",
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.headers["content-type"]).toContain("application/json");
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Conversation not found.",
+    });
+    expect(repository.subscribeToConversationEvents).toHaveBeenCalledWith(
+      session,
+      12,
+      expect.any(Function),
+    );
+  });
+
+  it("streams ready and reaction events, then unsubscribes on disconnect", async () => {
+    const unsubscribe = vi.fn();
+    const laterEvent: ChatRealtimeEventPayload = {
+      ...chatRealtimeEventPayload,
+      reactionVersion: 3,
+      reactions: [
+        {
+          emoji: "👍",
+          count: 3,
+        },
+      ],
+    };
+    let subscribed = true;
+    const repository = chatRepositoryMock({
+      subscribeToConversationEvents: vi.fn(async (_session, _conversationId, listener) => {
+        queueMicrotask(() => {
+          if (subscribed) {
+            listener(chatRealtimeEventPayload);
+          }
+        });
+        setTimeout(() => {
+          if (subscribed) {
+            listener(laterEvent);
+          }
+        }, 25);
+
+        return () => {
+          subscribed = false;
+          unsubscribe();
+        };
+      }),
+    });
+    const app = buildApp({
+      chatRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const address = await app.listen({
+      host: "127.0.0.1",
+      port: 0,
+    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2_000);
+
+    try {
+      const response = await fetch(`${address}/chat/conversations/12/events`, {
+        signal: controller.signal,
+      });
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let streamBody = "";
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("text/event-stream; charset=utf-8");
+      expect(response.headers.get("cache-control")).toBe("no-cache, no-transform");
+      expect(response.headers.get("connection")).toBe("keep-alive");
+      expect(response.headers.get("x-accel-buffering")).toBe("no");
+      expect(response.headers.get(requestIdHeader)).toMatch(/\S/u);
+      expect(reader).toBeDefined();
+
+      while (!streamBody.includes(`data: ${JSON.stringify(laterEvent)}`)) {
+        const chunk = await reader?.read();
+
+        if (chunk === undefined || chunk.done) {
+          break;
+        }
+
+        streamBody += decoder.decode(chunk.value, { stream: true });
+      }
+
+      expect(streamBody).toContain("event: ready\ndata: {\"conversationId\":12}\n\n");
+      expect(streamBody).toContain(
+        `event: message.reactions.updated\ndata: ${JSON.stringify(chatRealtimeEventPayload)}\n\n`,
+      );
+      expect(streamBody).toContain(
+        `event: message.reactions.updated\ndata: ${JSON.stringify(laterEvent)}\n\n`,
+      );
+      expect(unsubscribe).not.toHaveBeenCalled();
+      app.server.closeAllConnections();
+      controller.abort();
+      await vi.waitFor(() => {
+        expect(unsubscribe).toHaveBeenCalledOnce();
+      });
+    } finally {
+      clearTimeout(timeout);
+      controller.abort();
+      app.server.closeAllConnections();
+      await app.close();
+    }
   });
 });
 

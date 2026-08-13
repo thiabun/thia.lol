@@ -7,6 +7,8 @@ import type { PostAttachmentPayload } from "./profiles.js";
 import { createRoomsRepository, type RoomPayload, type RoomsRepository } from "./rooms.js";
 import type { RequestSession } from "./sessions.js";
 
+type ChatQueryExecutor = Pick<PoolConnection, "execute">;
+
 export class ChatRouteError extends Error {
   constructor(
     message: string,
@@ -77,9 +79,56 @@ export interface ChatMessagePayload {
   body: string;
   bodyEntities: TextEntityPayload[];
   attachments: ChatMessageAttachmentPayload[];
+  reactionVersion: number;
+  reactions: ChatMessageReactionSummaryPayload[];
   deletedAt: string | null;
   createdAt: string | null;
   sender: ChatUserPayload;
+}
+
+export interface ChatMessageReactionCountPayload {
+  emoji: string;
+  count: number;
+}
+
+export interface ChatMessageReactionSummaryPayload extends ChatMessageReactionCountPayload {
+  reactedByMe: boolean;
+}
+
+export interface ChatMessageReactionDetailPayload extends ChatMessageReactionSummaryPayload {
+  users: ChatUserPayload[];
+}
+
+export interface ChatReactionMutationPayload {
+  messageId: number;
+  conversationId: number;
+  reaction: {
+    emoji: string;
+    reacted: boolean;
+  };
+  changed: boolean;
+  reactionVersion: number;
+  reactions: ChatMessageReactionSummaryPayload[];
+}
+
+export interface ChatReactionDetailsPayload {
+  messageId: number;
+  conversationId: number;
+  reactionVersion: number;
+  reactions: ChatMessageReactionDetailPayload[];
+  truncated: boolean;
+}
+
+export interface ChatRealtimeEventPayload {
+  schemaVersion: 1;
+  type: "message.reactions.updated";
+  messageId: number;
+  conversationId: number;
+  actorUserId: number;
+  emoji: string;
+  reacted: boolean;
+  reactionVersion: number;
+  reactions: ChatMessageReactionCountPayload[];
 }
 
 export interface ChatMessagesPayload {
@@ -157,6 +206,15 @@ export interface ChatRepository {
   listRoomChannelMessages(session: RequestSession, slug: string, channelSlug: string): Promise<RoomChannelMessagesPayload>;
   createRoomChannelMessage(session: RequestSession, slug: string, channelSlug: string, body: Record<string, unknown>): Promise<ChatMessagePayload>;
   markRoomChannelRead(session: RequestSession, slug: string, channelSlug: string): Promise<ChatReadPayload>;
+  addMessageReaction(session: RequestSession, messageId: number, emoji: string): Promise<ChatReactionMutationPayload>;
+  removeMessageReaction(session: RequestSession, messageId: number, emoji: string): Promise<ChatReactionMutationPayload>;
+  messageReactionDetails(session: RequestSession, messageId: number): Promise<ChatReactionDetailsPayload>;
+  assertConversationAccess(session: RequestSession, conversationId: number): Promise<void>;
+  subscribeToConversationEvents(
+    session: RequestSession,
+    conversationId: number,
+    listener: (event: ChatRealtimeEventPayload) => void,
+  ): Promise<() => void>;
 }
 
 interface ConversationRow extends RowDataPacket {
@@ -188,10 +246,59 @@ interface MessageRow extends RowDataPacket {
   sender_user_id: number | string;
   body: string | null;
   deleted_at: string | null;
+  reaction_version: number | string | null;
   created_at: string | null;
   sender_handle: string | null;
   sender_display_name: string | null;
   sender_avatar_url: string | null;
+}
+
+interface MessageReactionSummaryRow extends RowDataPacket {
+  message_id: number | string;
+  emoji: string;
+  reaction_count: number | string;
+  reacted_by_me: number | string | boolean | null;
+  first_reaction_id: number | string;
+}
+
+interface MessageReactionDetailRow extends RowDataPacket {
+  reaction_id: number | string;
+  emoji: string;
+  reaction_count: number | string;
+  reacted_by_me: number | string | boolean | null;
+  total_rows: number | string;
+  user_id: number | string;
+  handle: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+}
+
+interface MessageReactionLimitRow extends RowDataPacket {
+  reaction_count: number | string;
+  matching_count: number | string;
+}
+
+interface MessageReactionVersionRow extends RowDataPacket {
+  reaction_version: number | string;
+}
+
+interface ConversationAccessRow extends RowDataPacket {
+  message_id?: number | string | null;
+  message_deleted_at?: string | null;
+  reaction_version?: number | string | null;
+  conversation_id: number | string;
+  conversation_type: string | null;
+  direct_user_one_id: number | string | null;
+  direct_user_two_id: number | string | null;
+  room_id: number | string | null;
+  room_visibility: string | null;
+  room_deleted_at: string | null;
+  room_channel_id: number | string | null;
+  channel_room_id: number | string | null;
+  channel_archived_at: string | null;
+  direct_member_user_id: number | string | null;
+  room_membership_id: number | string | null;
+  room_membership_banned_at: string | null;
 }
 
 interface UserRow extends RowDataPacket {
@@ -322,6 +429,8 @@ export function createChatRepository(
 
 class MariaDbChatRepository implements ChatRepository {
   private tableCache = new Map<string, Promise<boolean>>();
+  private columnCache = new Map<string, Promise<boolean>>();
+  private conversationEventListeners = new Map<number, Set<(event: ChatRealtimeEventPayload) => void>>();
 
   constructor(
     private readonly pool: Pool,
@@ -398,6 +507,8 @@ class MariaDbChatRepository implements ChatRepository {
   async listMessages(session: RequestSession, conversationId: number): Promise<ChatMessagesPayload> {
     await this.requireChatTables();
     const conversation = await this.conversationForUser(conversationId, session.userId);
+    const reactionStorageReady = await this.reactionStorageReady();
+    const reactionVersionSql = reactionStorageReady ? "m.reaction_version" : "0 AS reaction_version";
     const [rows] = await this.pool.execute<MessageRow[]>(
       `SELECT
           m.id,
@@ -405,6 +516,7 @@ class MariaDbChatRepository implements ChatRepository {
           m.sender_id AS sender_user_id,
           m.body,
           m.deleted_at,
+          ${reactionVersionSql},
           m.created_at,
           sender.handle AS sender_handle,
           sender_profile.display_name AS sender_display_name,
@@ -419,7 +531,7 @@ class MariaDbChatRepository implements ChatRepository {
 
     return {
       conversation,
-      messages: await this.messagePayloadsFromRows(session, chronologicalMessageRows(rows)),
+      messages: await this.messagePayloadsFromRows(session, chronologicalMessageRows(rows), reactionStorageReady),
     };
   }
 
@@ -603,6 +715,8 @@ class MariaDbChatRepository implements ChatRepository {
 
     await this.ensureConversationMember(conversationId, session.userId);
 
+    const reactionStorageReady = await this.reactionStorageReady();
+    const reactionVersionSql = reactionStorageReady ? "m.reaction_version" : "0 AS reaction_version";
     const [rows] = await this.pool.execute<MessageRow[]>(
       `SELECT
           m.id,
@@ -610,6 +724,7 @@ class MariaDbChatRepository implements ChatRepository {
           m.sender_id AS sender_user_id,
           m.body,
           m.deleted_at,
+          ${reactionVersionSql},
           m.created_at,
           sender.handle AS sender_handle,
           sender_profile.display_name AS sender_display_name,
@@ -624,7 +739,7 @@ class MariaDbChatRepository implements ChatRepository {
 
     return {
       channel: await this.roomChannelByIdForSession(session, room, numberValue(channel.id)),
-      messages: await this.messagePayloadsFromRows(session, chronologicalMessageRows(rows)),
+      messages: await this.messagePayloadsFromRows(session, chronologicalMessageRows(rows), reactionStorageReady),
     };
   }
 
@@ -676,6 +791,258 @@ class MariaDbChatRepository implements ChatRepository {
       conversationId,
       readAt,
     };
+  }
+
+  async addMessageReaction(
+    session: RequestSession,
+    messageId: number,
+    emoji: string,
+  ): Promise<ChatReactionMutationPayload> {
+    return this.mutateMessageReaction(session, messageId, emoji, true);
+  }
+
+  async removeMessageReaction(
+    session: RequestSession,
+    messageId: number,
+    emoji: string,
+  ): Promise<ChatReactionMutationPayload> {
+    return this.mutateMessageReaction(session, messageId, emoji, false);
+  }
+
+  async messageReactionDetails(
+    session: RequestSession,
+    messageId: number,
+  ): Promise<ChatReactionDetailsPayload> {
+    const normalizedMessageId = positiveInteger(messageId, "Message id");
+
+    await this.requireReactionStorage();
+    const access = await this.messageAccessForSession(session, normalizedMessageId, this.pool, false);
+    const [rows] = await this.pool.execute<MessageReactionDetailRow[]>(
+      `SELECT
+          mr.id AS reaction_id,
+          mr.emoji,
+          COUNT(*) OVER (PARTITION BY mr.emoji) AS reaction_count,
+          MAX(CASE WHEN mr.user_id = ? THEN 1 ELSE 0 END) OVER (PARTITION BY mr.emoji) AS reacted_by_me,
+          COUNT(*) OVER () AS total_rows,
+          u.id AS user_id,
+          u.handle,
+          p.display_name,
+          p.avatar_url
+       FROM message_reactions mr
+       INNER JOIN users u ON u.id = mr.user_id
+       INNER JOIN profiles p ON p.user_id = u.id
+       WHERE mr.message_id = ?
+       ORDER BY mr.emoji COLLATE utf8mb4_bin ASC, mr.created_at ASC, mr.id ASC
+       LIMIT 501`,
+      [session.userId, normalizedMessageId],
+    );
+    const limitedRows = rows.slice(0, 500);
+    const reactionsByEmoji = new Map<string, ChatMessageReactionDetailPayload>();
+
+    for (const row of limitedRows) {
+      let reaction = reactionsByEmoji.get(row.emoji);
+
+      if (reaction === undefined) {
+        reaction = {
+          emoji: row.emoji,
+          count: numberValue(row.reaction_count),
+          reactedByMe: booleanValue(row.reacted_by_me),
+          users: [],
+        };
+        reactionsByEmoji.set(row.emoji, reaction);
+      }
+
+      reaction.users.push(userPayloadFromParts(row.user_id, row.handle, row.display_name, row.avatar_url));
+    }
+
+    const totalRows = numberValue(rows[0]?.total_rows ?? 0);
+
+    return {
+      messageId: normalizedMessageId,
+      conversationId: numberValue(access.conversation_id),
+      reactionVersion: numberValue(access.reaction_version ?? 0),
+      reactions: [...reactionsByEmoji.values()],
+      truncated: totalRows > limitedRows.length,
+    };
+  }
+
+  async assertConversationAccess(session: RequestSession, conversationId: number): Promise<void> {
+    const normalizedConversationId = positiveInteger(conversationId, "Conversation id");
+    const [rows] = await this.pool.execute<ConversationAccessRow[]>(
+      `${conversationAccessSelectSql()}
+       WHERE c.id = ?
+       LIMIT 1`,
+      [session.userId, session.userId, normalizedConversationId],
+    );
+    const access = rows[0];
+
+    if (access === undefined || !conversationAccessAllowed(access, session)) {
+      throw new ChatRouteError("Conversation not found.", 404);
+    }
+  }
+
+  async subscribeToConversationEvents(
+    session: RequestSession,
+    conversationId: number,
+    listener: (event: ChatRealtimeEventPayload) => void,
+  ): Promise<() => void> {
+    const normalizedConversationId = positiveInteger(conversationId, "Conversation id");
+
+    await this.assertConversationAccess(session, normalizedConversationId);
+    const listeners = this.conversationEventListeners.get(normalizedConversationId) ?? new Set();
+    let subscribed = true;
+    const unsubscribe = () => {
+      if (!subscribed) {
+        return;
+      }
+
+      subscribed = false;
+      listeners.delete(guardedListener);
+
+      if (listeners.size === 0) {
+        this.conversationEventListeners.delete(normalizedConversationId);
+      }
+    };
+    const guardedListener = (event: ChatRealtimeEventPayload): void => {
+      void this.assertConversationAccess(session, normalizedConversationId).then(
+        () => {
+          if (!subscribed) {
+            return;
+          }
+
+          try {
+            listener(event);
+          } catch {
+            // Consumer failures do not affect the broker or a committed mutation.
+          }
+        },
+        () => unsubscribe(),
+      );
+    };
+
+    listeners.add(guardedListener);
+    this.conversationEventListeners.set(normalizedConversationId, listeners);
+
+    return unsubscribe;
+  }
+
+  private async mutateMessageReaction(
+    session: RequestSession,
+    messageId: number,
+    emoji: string,
+    reacted: boolean,
+  ): Promise<ChatReactionMutationPayload> {
+    const normalizedMessageId = positiveInteger(messageId, "Message id");
+    const normalizedEmoji = validateMessageReactionEmoji(emoji);
+
+    await this.requireReactionStorage();
+    const payload = await this.withTransaction(async (connection) => {
+      const access = await this.messageAccessForSession(session, normalizedMessageId, connection, true);
+      let changed = false;
+
+      if (reacted) {
+        const [limitRows] = await connection.execute<MessageReactionLimitRow[]>(
+          `SELECT
+              COUNT(*) AS reaction_count,
+              COALESCE(SUM(CASE WHEN emoji = ? THEN 1 ELSE 0 END), 0) AS matching_count
+           FROM message_reactions
+           WHERE message_id = ?
+             AND user_id = ?`,
+          [normalizedEmoji, normalizedMessageId, session.userId],
+        );
+        const reactionCount = numberValue(limitRows[0]?.reaction_count ?? 0);
+        const matchingCount = numberValue(limitRows[0]?.matching_count ?? 0);
+
+        if (matchingCount === 0) {
+          if (reactionCount >= 20) {
+            throw new ChatRouteError("You can add up to 20 distinct reactions to a message.", 422);
+          }
+
+          const [result] = await connection.execute<ResultSetHeader>(
+            `INSERT IGNORE INTO message_reactions (message_id, user_id, emoji)
+             VALUES (?, ?, ?)`,
+            [normalizedMessageId, session.userId, normalizedEmoji],
+          );
+          changed = result.affectedRows > 0;
+        }
+      } else {
+        const [result] = await connection.execute<ResultSetHeader>(
+          `DELETE FROM message_reactions
+           WHERE message_id = ?
+             AND user_id = ?
+             AND emoji = ?`,
+          [normalizedMessageId, session.userId, normalizedEmoji],
+        );
+
+        changed = result.affectedRows > 0;
+      }
+
+      if (changed) {
+        await connection.execute<ResultSetHeader>(
+          `UPDATE messages
+           SET reaction_version = reaction_version + 1
+           WHERE id = ?`,
+          [normalizedMessageId],
+        );
+      }
+
+      const reactions = (await this.messageReactionSummaries(
+        connection,
+        session.userId,
+        [normalizedMessageId],
+      )).get(normalizedMessageId) ?? [];
+      const [versionRows] = await connection.execute<MessageReactionVersionRow[]>(
+        `SELECT reaction_version
+         FROM messages
+         WHERE id = ?
+         LIMIT 1`,
+        [normalizedMessageId],
+      );
+
+      return {
+        messageId: normalizedMessageId,
+        conversationId: numberValue(access.conversation_id),
+        reaction: {
+          emoji: normalizedEmoji,
+          reacted,
+        },
+        changed,
+        reactionVersion: numberValue(versionRows[0]?.reaction_version ?? access.reaction_version ?? 0),
+        reactions,
+      };
+    });
+
+    if (payload.changed) {
+      this.publishConversationEvent({
+        schemaVersion: 1,
+        type: "message.reactions.updated",
+        messageId: payload.messageId,
+        conversationId: payload.conversationId,
+        actorUserId: session.userId,
+        emoji: payload.reaction.emoji,
+        reacted: payload.reaction.reacted,
+        reactionVersion: payload.reactionVersion,
+        reactions: payload.reactions.map(({ emoji: reactionEmoji, count }) => ({ emoji: reactionEmoji, count })),
+      });
+    }
+
+    return payload;
+  }
+
+  private publishConversationEvent(event: ChatRealtimeEventPayload): void {
+    const listeners = this.conversationEventListeners.get(event.conversationId);
+
+    if (listeners === undefined) {
+      return;
+    }
+
+    for (const listener of [...listeners]) {
+      try {
+        listener(event);
+      } catch {
+        // A disconnected listener must not turn a committed mutation into an API failure.
+      }
+    }
   }
 
   private async targetUserFromBody(body: Record<string, unknown>): Promise<{ id: number }> {
@@ -995,6 +1362,8 @@ class MariaDbChatRepository implements ChatRepository {
   }
 
   private async messageById(messageId: number, session: RequestSession): Promise<ChatMessagePayload> {
+    const reactionStorageReady = await this.reactionStorageReady();
+    const reactionVersionSql = reactionStorageReady ? "m.reaction_version" : "0 AS reaction_version";
     const [rows] = await this.pool.execute<MessageRow[]>(
       `SELECT
           m.id,
@@ -1002,6 +1371,7 @@ class MariaDbChatRepository implements ChatRepository {
           m.sender_id AS sender_user_id,
           m.body,
           m.deleted_at,
+          ${reactionVersionSql},
           m.created_at,
           sender.handle AS sender_handle,
           sender_profile.display_name AS sender_display_name,
@@ -1019,7 +1389,7 @@ class MariaDbChatRepository implements ChatRepository {
       throw new ChatRouteError("Message not found.", 404);
     }
 
-    const messages = await this.messagePayloadsFromRows(session, [row]);
+    const messages = await this.messagePayloadsFromRows(session, [row], reactionStorageReady);
     const message = messages[0];
 
     if (message === undefined) {
@@ -1029,21 +1399,82 @@ class MariaDbChatRepository implements ChatRepository {
     return message;
   }
 
-  private async messagePayloadsFromRows(session: RequestSession, rows: readonly MessageRow[]): Promise<ChatMessagePayload[]> {
+  private async messageAccessForSession(
+    session: RequestSession,
+    messageId: number,
+    executor: ChatQueryExecutor,
+    lockMessage: boolean,
+  ): Promise<ConversationAccessRow> {
+    const [rows] = await executor.execute<ConversationAccessRow[]>(
+      `SELECT
+          m.id AS message_id,
+          m.deleted_at AS message_deleted_at,
+          m.reaction_version,
+          c.id AS conversation_id,
+          c.type AS conversation_type,
+          c.direct_user_one_id,
+          c.direct_user_two_id,
+          r.id AS room_id,
+          r.visibility AS room_visibility,
+          r.deleted_at AS room_deleted_at,
+          rc.id AS room_channel_id,
+          rc.room_id AS channel_room_id,
+          rc.archived_at AS channel_archived_at,
+          direct_member.user_id AS direct_member_user_id,
+          room_membership.id AS room_membership_id,
+          room_membership.banned_at AS room_membership_banned_at
+       FROM messages m
+       INNER JOIN conversations c ON c.id = m.conversation_id
+       LEFT JOIN rooms r ON r.id = c.room_id
+       LEFT JOIN room_channels rc
+         ON rc.id = c.room_channel_id
+        AND rc.room_id = c.room_id
+       LEFT JOIN conversation_members direct_member
+         ON direct_member.conversation_id = c.id
+        AND direct_member.user_id = ?
+       LEFT JOIN room_memberships room_membership
+         ON room_membership.room_id = c.room_id
+        AND room_membership.user_id = ?
+       WHERE m.id = ?
+       LIMIT 1
+       ${lockMessage ? "FOR UPDATE" : ""}`,
+      [session.userId, session.userId, messageId],
+    );
+    const access = rows[0];
+
+    if (
+      access === undefined ||
+      access.message_deleted_at !== null ||
+      !conversationAccessAllowed(access, session)
+    ) {
+      throw new ChatRouteError("Message not found.", 404);
+    }
+
+    return access;
+  }
+
+  private async messagePayloadsFromRows(
+    session: RequestSession,
+    rows: readonly MessageRow[],
+    reactionStorageReady?: boolean,
+  ): Promise<ChatMessagePayload[]> {
     const visibleMessageIds = [...new Set(
       rows
         .filter((row) => row.deleted_at === null)
         .map((row) => numberValue(row.id)),
     )];
-    const [entitiesByMessageId, attachmentsByMessageId] = await Promise.all([
+    const [entitiesByMessageId, attachmentsByMessageId, reactionHydration] = await Promise.all([
       this.textEntitiesForMessages(visibleMessageIds),
       this.messageAttachmentsForMessages(session, visibleMessageIds),
+      this.messageReactionHydration(session.userId, visibleMessageIds, reactionStorageReady),
     ]);
 
     return rows.map((row) => this.messagePayloadFromRow(
       row,
       entitiesByMessageId.get(numberValue(row.id)) ?? [],
       attachmentsByMessageId.get(numberValue(row.id)) ?? [],
+      reactionHydration.reactionsByMessageId.get(numberValue(row.id)) ?? [],
+      reactionHydration.storageReady,
     ));
   }
 
@@ -1051,6 +1482,8 @@ class MariaDbChatRepository implements ChatRepository {
     row: MessageRow,
     bodyEntities: TextEntityPayload[],
     attachments: ChatMessageAttachmentPayload[],
+    reactions: ChatMessageReactionSummaryPayload[],
+    reactionStorageReady: boolean,
   ): ChatMessagePayload {
     const deleted = row.deleted_at !== null;
     const messageId = numberValue(row.id);
@@ -1061,10 +1494,76 @@ class MariaDbChatRepository implements ChatRepository {
       body: deleted ? "" : stringValue(row.body),
       bodyEntities: deleted ? [] : bodyEntities,
       attachments: deleted ? [] : attachments,
+      reactionVersion: reactionStorageReady ? numberValue(row.reaction_version ?? 0) : 0,
+      reactions: deleted ? [] : reactions,
       deletedAt: nullableStringValue(row.deleted_at),
       createdAt: nullableStringValue(row.created_at),
       sender: userPayloadFromParts(row.sender_user_id, row.sender_handle, row.sender_display_name, row.sender_avatar_url),
     };
+  }
+
+  private async messageReactionHydration(
+    viewerUserId: number,
+    messageIds: readonly number[],
+    knownStorageReady?: boolean,
+  ): Promise<{
+    storageReady: boolean;
+    reactionsByMessageId: Map<number, ChatMessageReactionSummaryPayload[]>;
+  }> {
+    const storageReady = knownStorageReady ?? await this.reactionStorageReady();
+
+    if (!storageReady || messageIds.length === 0) {
+      return {
+        storageReady,
+        reactionsByMessageId: new Map(),
+      };
+    }
+
+    return {
+      storageReady,
+      reactionsByMessageId: await this.messageReactionSummaries(this.pool, viewerUserId, messageIds),
+    };
+  }
+
+  private async messageReactionSummaries(
+    executor: ChatQueryExecutor,
+    viewerUserId: number,
+    messageIds: readonly number[],
+  ): Promise<Map<number, ChatMessageReactionSummaryPayload[]>> {
+    const reactionsByMessageId = new Map<number, ChatMessageReactionSummaryPayload[]>();
+
+    if (messageIds.length === 0) {
+      return reactionsByMessageId;
+    }
+
+    const placeholders = messageIds.map(() => "?").join(", ");
+    const [rows] = await executor.execute<MessageReactionSummaryRow[]>(
+      `SELECT
+          mr.message_id,
+          mr.emoji,
+          COUNT(*) AS reaction_count,
+          MAX(CASE WHEN mr.user_id = ? THEN 1 ELSE 0 END) AS reacted_by_me,
+          MIN(mr.id) AS first_reaction_id
+       FROM message_reactions mr
+       WHERE mr.message_id IN (${placeholders})
+       GROUP BY mr.message_id, mr.emoji
+       ORDER BY mr.message_id ASC, first_reaction_id ASC, mr.emoji COLLATE utf8mb4_bin ASC`,
+      [viewerUserId, ...messageIds],
+    );
+
+    for (const row of rows) {
+      const messageId = numberValue(row.message_id);
+      const reactions = reactionsByMessageId.get(messageId) ?? [];
+
+      reactions.push({
+        emoji: row.emoji,
+        count: numberValue(row.reaction_count),
+        reactedByMe: booleanValue(row.reacted_by_me),
+      });
+      reactionsByMessageId.set(messageId, reactions);
+    }
+
+    return reactionsByMessageId;
   }
 
   private async chatMessageDraft(
@@ -1686,6 +2185,20 @@ class MariaDbChatRepository implements ChatRepository {
     return Boolean(row?.first_follows_second) && Boolean(row?.second_follows_first);
   }
 
+  private async reactionStorageReady(): Promise<boolean> {
+    if (!(await this.hasTable("message_reactions"))) {
+      return false;
+    }
+
+    return this.hasColumn("messages", "reaction_version");
+  }
+
+  private async requireReactionStorage(): Promise<void> {
+    if (!(await this.reactionStorageReady())) {
+      throw new ChatStorageNotReadyError("Message reaction storage is not ready. Run pending migrations.");
+    }
+  }
+
   private async requireChatTables(): Promise<void> {
     if (!(await this.hasTable("conversations")) || !(await this.hasTable("conversation_members")) || !(await this.hasTable("messages"))) {
       throw new ChatStorageNotReadyError();
@@ -1727,7 +2240,19 @@ class MariaDbChatRepository implements ChatRepository {
     let cached = this.tableCache.get(tableName);
 
     if (cached === undefined) {
-      cached = this.tableExists(tableName);
+      cached = this.tableExists(tableName).then(
+        (exists) => {
+          if (!exists) {
+            this.tableCache.delete(tableName);
+          }
+
+          return exists;
+        },
+        (error: unknown) => {
+          this.tableCache.delete(tableName);
+          throw error;
+        },
+      );
       this.tableCache.set(tableName, cached);
     }
 
@@ -1747,6 +2272,30 @@ class MariaDbChatRepository implements ChatRepository {
   }
 
   private async hasColumn(tableName: string, columnName: string): Promise<boolean> {
+    const key = `${tableName}.${columnName}`;
+    let cached = this.columnCache.get(key);
+
+    if (cached === undefined) {
+      cached = this.columnExists(tableName, columnName).then(
+        (exists) => {
+          if (!exists) {
+            this.columnCache.delete(key);
+          }
+
+          return exists;
+        },
+        (error: unknown) => {
+          this.columnCache.delete(key);
+          throw error;
+        },
+      );
+      this.columnCache.set(key, cached);
+    }
+
+    return cached;
+  }
+
+  private async columnExists(tableName: string, columnName: string): Promise<boolean> {
     const [rows] = await this.pool.execute<CountRow[]>(
       `SELECT COUNT(*) AS value
        FROM information_schema.COLUMNS
@@ -1843,6 +2392,91 @@ export function conversationSelectSql(): string {
     WHERE viewer_member.user_id = ?
       AND c.type = 'direct'
       AND other_user.status = 'active'`;
+}
+
+function conversationAccessSelectSql(): string {
+  return `SELECT
+      c.id AS conversation_id,
+      c.type AS conversation_type,
+      c.direct_user_one_id,
+      c.direct_user_two_id,
+      r.id AS room_id,
+      r.visibility AS room_visibility,
+      r.deleted_at AS room_deleted_at,
+      rc.id AS room_channel_id,
+      rc.room_id AS channel_room_id,
+      rc.archived_at AS channel_archived_at,
+      direct_member.user_id AS direct_member_user_id,
+      room_membership.id AS room_membership_id,
+      room_membership.banned_at AS room_membership_banned_at
+    FROM conversations c
+    LEFT JOIN rooms r ON r.id = c.room_id
+    LEFT JOIN room_channels rc
+      ON rc.id = c.room_channel_id
+     AND rc.room_id = c.room_id
+    LEFT JOIN conversation_members direct_member
+      ON direct_member.conversation_id = c.id
+     AND direct_member.user_id = ?
+    LEFT JOIN room_memberships room_membership
+      ON room_membership.room_id = c.room_id
+     AND room_membership.user_id = ?`;
+}
+
+export function conversationAccessAllowed(
+  access: Pick<
+    ConversationAccessRow,
+    | "conversation_type"
+    | "direct_user_one_id"
+    | "direct_user_two_id"
+    | "room_id"
+    | "room_visibility"
+    | "room_deleted_at"
+    | "room_channel_id"
+    | "channel_room_id"
+    | "channel_archived_at"
+    | "direct_member_user_id"
+    | "room_membership_id"
+    | "room_membership_banned_at"
+  >,
+  session: Pick<RequestSession, "role" | "userId">,
+): boolean {
+  if (access.conversation_type === "direct") {
+    return nullableNumberValue(access.direct_member_user_id) === session.userId && (
+      nullableNumberValue(access.direct_user_one_id) === session.userId ||
+      nullableNumberValue(access.direct_user_two_id) === session.userId
+    );
+  }
+
+  if (access.conversation_type !== "room_channel") {
+    return false;
+  }
+
+  const roomId = nullableNumberValue(access.room_id);
+  const channelRoomId = nullableNumberValue(access.channel_room_id);
+
+  if (
+    roomId === null ||
+    nullableNumberValue(access.room_channel_id) === null ||
+    channelRoomId !== roomId ||
+    access.room_deleted_at !== null ||
+    access.channel_archived_at !== null
+  ) {
+    return false;
+  }
+
+  if (session.role === "admin") {
+    return true;
+  }
+
+  if (access.room_membership_banned_at !== null) {
+    return false;
+  }
+
+  if (access.room_visibility === "public" || access.room_visibility === "view_only") {
+    return true;
+  }
+
+  return nullableNumberValue(access.room_membership_id) !== null;
 }
 
 function roomChannelSelectSql(): string {
@@ -2035,6 +2669,55 @@ interface ValidatedMessageDraft {
 }
 
 const maxMessageAttachments = 8;
+const messageReactionSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+const messageReactionForbiddenPattern = /[\p{White_Space}\p{Cc}]/u;
+const messageReactionFormatPattern = /\p{Cf}/u;
+const messageReactionPictographicPattern = /\p{Extended_Pictographic}/u;
+const messageReactionFlagPattern = /^\p{Regional_Indicator}{2}$/u;
+const messageReactionKeycapPattern = /^[#*0-9]\uFE0F?\u20E3$/u;
+const messageReactionTagFlagPattern = /^\p{Extended_Pictographic}[\u{E0020}-\u{E007E}]+\u{E007F}$/u;
+
+export function validateMessageReactionEmoji(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new ChatRouteError("Reaction emoji is invalid.", 422);
+  }
+
+  const normalized = value.normalize("NFC");
+  const segments = [...messageReactionSegmenter.segment(normalized)];
+  const characters = [...normalized];
+  const includesTagCharacter = characters.some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+
+    return codePoint >= 0xE0020 && codePoint <= 0xE007F;
+  });
+  const includesForbiddenFormat = characters.some((character) => {
+    if (!messageReactionFormatPattern.test(character) || character === "\u200D") {
+      return false;
+    }
+
+    const codePoint = character.codePointAt(0) ?? 0;
+
+    return codePoint < 0xE0020 || codePoint > 0xE007F;
+  });
+  const supported = messageReactionPictographicPattern.test(normalized) ||
+    messageReactionFlagPattern.test(normalized) ||
+    messageReactionKeycapPattern.test(normalized);
+
+  if (
+    normalized.length === 0 ||
+    new TextEncoder().encode(normalized).byteLength > 64 ||
+    messageReactionForbiddenPattern.test(normalized) ||
+    includesForbiddenFormat ||
+    (includesTagCharacter && !messageReactionTagFlagPattern.test(normalized)) ||
+    segments.length !== 1 ||
+    segments[0]?.segment !== normalized ||
+    !supported
+  ) {
+    throw new ChatRouteError("Reaction must be exactly one emoji.", 422);
+  }
+
+  return normalized;
+}
 
 export function validateMessageAttachmentInputs(value: unknown): MessageAttachmentCandidate[] {
   if (value === undefined || value === null) {

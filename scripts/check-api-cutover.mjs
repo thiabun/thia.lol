@@ -5,6 +5,7 @@ const cookieHeader = process.env.COOKIE_HEADER || "";
 const runtimeHeader = "x-thia-api-runtime";
 const privateReadStatus = cookieHeader === "" ? 401 : 200;
 const privateMutationStatus = cookieHeader === "" ? 401 : 403;
+const privateNotFoundStatus = cookieHeader === "" ? 401 : 404;
 
 const jsonRoutes = [
   ["GET", "/api/health", 200],
@@ -42,6 +43,8 @@ const jsonRoutes = [
   ["GET", "/api/chat/conversations", 401],
   ["GET", "/api/chat/moots", 401],
   ["GET", "/api/chat/conversations/1/messages", 401],
+  ["GET", "/api/chat/messages/999999999/reactions/details", privateNotFoundStatus],
+  ["GET", "/api/chat/conversations/999999999/events", privateNotFoundStatus],
   ["GET", "/api/admin/reports", 401],
   ["GET", "/api/admin/rooms", 401],
   ["GET", "/api/admin/growth", 401],
@@ -111,6 +114,8 @@ const jsonRoutes = [
   ["POST", "/api/chat/conversations", privateMutationStatus],
   ["POST", "/api/chat/conversations/1/messages", privateMutationStatus],
   ["POST", "/api/chat/conversations/1/read", privateMutationStatus],
+  ["POST", "/api/chat/messages/999999999/reactions", privateMutationStatus],
+  ["DELETE", "/api/chat/messages/999999999/reactions", privateMutationStatus],
   ["POST", "/api/reports", privateMutationStatus],
   ["POST", "/api/admin/posts/99/hide", privateMutationStatus],
   ["POST", "/api/admin/posts/99/remove", privateMutationStatus],

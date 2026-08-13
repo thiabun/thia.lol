@@ -1192,6 +1192,40 @@ test("Room Chat shares the native renderer and persists attachment-only composer
   await expect(page.getByTestId("message-room-attachment")).toBeVisible();
 });
 
+test("Room Chat reactions persist and expose participant details", async ({ page }) => {
+  await installMockRoomChatReactionEvents(page);
+  await mockPersistentRoomAttachmentChat(page);
+  await page.goto("/rooms/attachment-room?tab=chat&channel=general");
+
+  let bubble = page.locator('[data-message-id="8401"]');
+  await expect(bubble).toContainText("A native Room share");
+  await bubble.hover();
+  await bubble.getByRole("button", { name: "Add reaction" }).click();
+  await page
+    .getByRole("dialog", { name: "React to message" })
+    .getByRole("button", { name: "React with fire" })
+    .click();
+
+  let reaction = bubble.getByRole("button", { name: /Remove fire reaction/u });
+  await expect(reaction).toHaveAttribute("aria-pressed", "true");
+  await expect(reaction).toContainText("1");
+
+  await bubble.hover();
+  await bubble.getByRole("button", { name: "See who reacted" }).click();
+  const details = page.getByRole("dialog", { name: "Message reactions" });
+  await expect(details).toContainText("Viewer");
+  await details.getByRole("button", { name: "Close message reactions" }).click();
+
+  await page.reload();
+  bubble = page.locator('[data-message-id="8401"]');
+  reaction = bubble.getByRole("button", { name: /Remove fire reaction/u });
+  await expect(reaction).toHaveAttribute("aria-pressed", "true");
+  await expect(reaction).toContainText("1");
+
+  await reaction.click();
+  await expect(bubble.getByRole("button", { name: /fire reaction/u })).toHaveCount(0);
+});
+
 test("joining waits for explicit rules agreement and rules remain available", async ({
   page,
 }) => {
@@ -2025,6 +2059,40 @@ async function acknowledgeWhatsNewRelease(page: Page, userId: number) {
   );
 }
 
+async function installMockRoomChatReactionEvents(page: Page) {
+  await page.addInitScript(() => {
+    const sources: MockEventSource[] = [];
+
+    class MockEventSource extends EventTarget {
+      readonly url: string;
+      readonly withCredentials: boolean;
+      readyState = 1;
+
+      constructor(url: string | URL, init?: EventSourceInit) {
+        super();
+        this.url = String(url);
+        this.withCredentials = init?.withCredentials === true;
+        sources.push(this);
+        queueMicrotask(() => this.dispatchEvent(new Event("open")));
+      }
+
+      close() {
+        this.readyState = 2;
+        const index = sources.indexOf(this);
+
+        if (index >= 0) {
+          sources.splice(index, 1);
+        }
+      }
+    }
+
+    Object.defineProperty(window, "EventSource", {
+      configurable: true,
+      value: MockEventSource,
+    });
+  });
+}
+
 async function mockPersistentRoomAttachmentChat(page: Page) {
   const room = mockRoom({
     slug: "attachment-room",
@@ -2185,6 +2253,112 @@ async function mockPersistentRoomAttachmentChat(page: Page) {
       });
     },
   );
+  await page.route("**/api/chat/messages/*/reactions**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const messageId = Number(
+      path.match(/\/chat\/messages\/(\d+)\/reactions/u)?.[1] ?? 0,
+    );
+    const targetMessage = messages.find((message) => message.id === messageId);
+
+    if (!targetMessage) {
+      await route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, error: "Message not found." }),
+      });
+      return;
+    }
+
+    const currentReactions = Array.isArray(targetMessage.reactions)
+      ? targetMessage.reactions.filter(plainRecord)
+      : [];
+    const reactionVersion = Number(targetMessage.reactionVersion ?? 0);
+
+    if (request.method() === "GET" && path.endsWith("/details")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            messageId,
+            conversationId: channel.conversationId,
+            reactionVersion,
+            reactions: currentReactions.map((reaction) => ({
+              emoji: reaction.emoji,
+              count: reaction.count,
+              reactedByMe: reaction.reactedByMe === true,
+              users: [{
+                id: 9,
+                handle: "viewer",
+                displayName: "Viewer",
+                initials: "V",
+                aura: "glow",
+                avatarUrl: null,
+              }],
+            })),
+            truncated: false,
+          },
+        }),
+      });
+      return;
+    }
+
+    const body = request.postDataJSON() as { emoji?: unknown };
+    const emoji = typeof body.emoji === "string" ? body.emoji : "";
+    const existing = currentReactions.find((reaction) => reaction.emoji === emoji);
+    const adding = request.method() === "POST";
+    let changed = false;
+    let nextReactions = currentReactions;
+
+    if (adding && existing?.reactedByMe !== true) {
+      changed = true;
+      nextReactions = existing
+        ? currentReactions.map((reaction) =>
+            reaction === existing
+              ? {
+                  ...reaction,
+                  count: Number(reaction.count ?? 0) + 1,
+                  reactedByMe: true,
+                }
+              : reaction,
+          )
+        : [...currentReactions, { emoji, count: 1, reactedByMe: true }];
+    } else if (!adding && existing?.reactedByMe === true) {
+      changed = true;
+      const nextCount = Math.max(0, Number(existing.count ?? 0) - 1);
+      nextReactions = nextCount === 0
+        ? currentReactions.filter((reaction) => reaction !== existing)
+        : currentReactions.map((reaction) =>
+            reaction === existing
+              ? { ...reaction, count: nextCount, reactedByMe: false }
+              : reaction,
+          );
+    }
+
+    const nextVersion = reactionVersion + (changed ? 1 : 0);
+    Object.assign(targetMessage, {
+      reactions: nextReactions,
+      reactionVersion: nextVersion,
+    });
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          messageId,
+          conversationId: channel.conversationId,
+          changed,
+          reactionVersion: nextVersion,
+          reaction: { emoji, reacted: adding },
+          reactions: nextReactions,
+        },
+      }),
+    });
+  });
   await page.route(
     "**/api/rooms/attachment-room/channels/general/read",
     async (route) => {

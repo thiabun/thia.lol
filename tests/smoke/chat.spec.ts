@@ -205,6 +205,261 @@ test("mobile chat uses a vertical list and focused conversation pane", async ({ 
   await expect(mobileNav).toBeVisible();
 });
 
+test("direct message reactions toggle, show participants, and accept live updates", async ({
+  page,
+}) => {
+  await installMockChatReactionEvents(page);
+  await mockAuthenticatedChat(page);
+  await page.goto("/chat?conversation=10");
+
+  const cookieButton = page
+    .getByTestId("cookie-notice")
+    .getByRole("button", { name: "Continue" });
+  if (await cookieButton.isVisible()) {
+    await cookieButton.click();
+  }
+
+  const bubble = page.locator('[data-message-id="100"]');
+  await expect(bubble).toContainText("hello from a moot");
+  await bubble.hover();
+  await bubble.getByRole("button", { name: "Add reaction" }).click();
+
+  const picker = page.getByRole("dialog", { name: "React to message" });
+  const heart = picker.getByRole("button", { name: "React with heart" });
+  await expect(heart).toBeFocused();
+  await heart.press("Enter");
+
+  let reaction = bubble.getByRole("button", { name: /Remove heart reaction/u });
+  await expect(reaction).toHaveAttribute("aria-pressed", "true");
+  await expect(reaction).toContainText("1");
+
+  await bubble.hover();
+  await bubble.getByRole("button", { name: "See who reacted" }).click();
+  const details = page.getByRole("dialog", { name: "Message reactions" });
+  await expect(details).toContainText("Member");
+  await details.getByRole("button", { name: "Close message reactions" }).click();
+
+  await reaction.click();
+  await expect(bubble.getByRole("button", { name: /heart reaction/u })).toHaveCount(0);
+
+  await bubble.hover();
+  await bubble.getByRole("button", { name: "Add reaction" }).click();
+  await page
+    .getByRole("dialog", { name: "React to message" })
+    .getByRole("button", { name: "React with heart" })
+    .click();
+  reaction = bubble.getByRole("button", { name: /Remove heart reaction/u });
+  await expect(reaction).toContainText("1");
+
+  await page.evaluate(() => {
+    const testWindow = window as Window & {
+      __emitChatReactionEvent?: (payload: unknown) => void;
+    };
+    testWindow.__emitChatReactionEvent?.({
+      schemaVersion: 1,
+      type: "message.reactions.updated",
+      conversationId: 10,
+      messageId: 100,
+      reactionVersion: 4,
+      actorUserId: 2,
+      emoji: "❤️",
+      reacted: true,
+      reactions: [{ emoji: "❤️", count: 2 }],
+    });
+  });
+
+  await expect(reaction).toContainText("2");
+  await expect(reaction).toHaveAttribute("aria-pressed", "true");
+});
+
+test("failed direct message reactions roll back the optimistic chip", async ({
+  page,
+}) => {
+  let releaseFailure = () => undefined;
+  const failureDelay = new Promise<void>((resolve) => {
+    releaseFailure = resolve;
+  });
+
+  await installMockChatReactionEvents(page);
+  await mockAuthenticatedChat(page);
+  await page.route("**/api/chat/messages/*/reactions**", async (route) => {
+    await failureDelay;
+    await route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Reaction write failed." }),
+    });
+  });
+  await page.goto("/chat?conversation=10");
+
+  const bubble = page.locator('[data-message-id="100"]');
+  await bubble.hover();
+  await bubble.getByRole("button", { name: "Add reaction" }).click();
+  await page
+    .getByRole("dialog", { name: "React to message" })
+    .getByRole("button", { name: "React with heart" })
+    .click();
+
+  const optimisticReaction = bubble.getByRole("button", {
+    name: /Remove heart reaction/u,
+  });
+  await expect(optimisticReaction).toHaveAttribute("aria-pressed", "true");
+  releaseFailure();
+
+  await expect(optimisticReaction).toHaveCount(0);
+  await expect(bubble.getByRole("alert")).toHaveText("Reaction write failed.");
+});
+
+test("a live confirmation survives a lost direct reaction response", async ({
+  page,
+}) => {
+  let releaseLostResponse = () => undefined;
+  const lostResponseDelay = new Promise<void>((resolve) => {
+    releaseLostResponse = resolve;
+  });
+
+  await installMockChatReactionEvents(page);
+  await mockAuthenticatedChat(page);
+  await page.route("**/api/chat/messages/*/reactions**", async (route) => {
+    await lostResponseDelay;
+    await route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Connection lost." }),
+    });
+  });
+  await page.goto("/chat?conversation=10");
+
+  const bubble = page.locator('[data-message-id="100"]');
+  await bubble.hover();
+  await bubble.getByRole("button", { name: "Add reaction" }).click();
+  await page
+    .getByRole("dialog", { name: "React to message" })
+    .getByRole("button", { name: "React with heart" })
+    .click();
+
+  await page.evaluate(() => {
+    const testWindow = window as Window & {
+      __emitChatReactionEvent?: (payload: unknown) => void;
+    };
+    testWindow.__emitChatReactionEvent?.({
+      schemaVersion: 1,
+      type: "message.reactions.updated",
+      conversationId: 10,
+      messageId: 100,
+      reactionVersion: 1,
+      actorUserId: 1,
+      emoji: "❤️",
+      reacted: true,
+      reactions: [{ emoji: "❤️", count: 1 }],
+    });
+  });
+  releaseLostResponse();
+
+  const confirmedReaction = bubble.getByRole("button", {
+    name: /Remove heart reaction/u,
+  });
+  await expect(confirmedReaction).toHaveAttribute("aria-pressed", "true");
+  await expect(confirmedReaction).toContainText("1");
+  await expect(bubble.getByRole("alert")).toHaveCount(0);
+});
+
+test("mobile message actions are touch-sized and accept another supported emoji", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installMockChatReactionEvents(page);
+  await mockAuthenticatedChat(page);
+  await page.goto("/chat?conversation=10");
+
+  const cookieButton = page
+    .getByTestId("cookie-notice")
+    .getByRole("button", { name: "Continue" });
+  if (await cookieButton.isVisible()) {
+    await cookieButton.click();
+  }
+
+  const bubble = page.locator('[data-message-id="100"]');
+  const actions = bubble.getByRole("button", { name: "Message actions" });
+  const actionsBox = await actions.boundingBox();
+  expect(Math.round(actionsBox?.width ?? 0)).toBeGreaterThanOrEqual(44);
+  expect(Math.round(actionsBox?.height ?? 0)).toBeGreaterThanOrEqual(44);
+
+  await actions.click();
+  const mobileActions = page.getByRole("dialog", { name: "Message actions" });
+  await expect(mobileActions.getByRole("button", { name: "Add reaction" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(mobileActions).toHaveCount(0);
+  await expect(actions).toBeFocused();
+
+  await actions.click();
+  await mobileActions.getByRole("button", { name: "Add reaction" }).click();
+  const picker = page.getByRole("dialog", { name: "React to message" });
+  const quickReactionSizes = await picker
+    .getByRole("group", { name: "Quick reactions" })
+    .getByRole("button")
+    .evaluateAll((buttons) =>
+      buttons.map((button) => ({
+        height: (button as HTMLElement).offsetHeight,
+        width: (button as HTMLElement).offsetWidth,
+      })),
+    );
+  expect(
+    quickReactionSizes.every((size) => size.height >= 44 && size.width >= 44),
+  ).toBe(true);
+  await page.setViewportSize({ width: 320, height: 720 });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      ),
+    )
+    .toBe(false);
+
+  await picker.getByLabel("Another emoji").fill("1️⃣");
+  await picker.getByRole("button", { name: "Add", exact: true }).click();
+  const reaction = bubble.getByRole("button", { name: /Remove 1️⃣ reaction/u });
+  await expect(reaction).toContainText("1️⃣");
+  await expect(reaction).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      ),
+    )
+    .toBe(false);
+});
+
+test("coarse-pointer tablets keep the touch action menu", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 1000 });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Emulation.setTouchEmulationEnabled", {
+    enabled: true,
+    maxTouchPoints: 5,
+  });
+  await installMockChatReactionEvents(page);
+  await mockAuthenticatedChat(page);
+  await page.goto("/chat?conversation=10");
+
+  await expect
+    .poll(() => page.evaluate(() => window.matchMedia("(pointer: coarse)").matches))
+    .toBe(true);
+  const bubble = page.locator('[data-message-id="100"]');
+  const touchActions = bubble.getByRole("button", { name: "Message actions" });
+  await expect(touchActions).toBeVisible();
+  const box = await touchActions.boundingBox();
+  expect(Math.round(box?.width ?? 0)).toBeGreaterThanOrEqual(44);
+  expect(Math.round(box?.height ?? 0)).toBeGreaterThanOrEqual(44);
+  await expect(bubble.locator(".message-actions-desktop")).toBeHidden();
+
+  await touchActions.click();
+  await expect(
+    page
+      .getByRole("dialog", { name: "Message actions" })
+      .getByRole("button", { name: "Add reaction" }),
+  ).toBeVisible();
+});
+
 test("switching conversations does not show stale messages under the next participant", async ({
   page,
 }) => {
@@ -1130,6 +1385,7 @@ test("conversation member can report an individual chat message", async ({ page 
   await expect(page.getByTestId("chat-message-list")).toContainText(
     "hello from a moot",
   );
+  await page.locator('[data-message-id="100"]').hover();
   const reportTrigger = page.getByRole("button", { name: "Report message" });
   await expect(reportTrigger).toHaveAttribute("title", "Report message");
   await reportTrigger.click();
@@ -1334,6 +1590,53 @@ type MockAuthenticatedChatOptions = {
   onCreateConversation?: (body: unknown) => Promise<typeof mockConversation>;
   onSendMessage?: (body: unknown) => Promise<void>;
 };
+
+async function installMockChatReactionEvents(page: Page) {
+  await page.addInitScript(() => {
+    const sources: MockEventSource[] = [];
+
+    class MockEventSource extends EventTarget {
+      readonly url: string;
+      readonly withCredentials: boolean;
+      readyState = 1;
+
+      constructor(url: string | URL, init?: EventSourceInit) {
+        super();
+        this.url = String(url);
+        this.withCredentials = init?.withCredentials === true;
+        sources.push(this);
+        queueMicrotask(() => this.dispatchEvent(new Event("open")));
+      }
+
+      close() {
+        this.readyState = 2;
+        const index = sources.indexOf(this);
+
+        if (index >= 0) {
+          sources.splice(index, 1);
+        }
+      }
+    }
+
+    Object.defineProperty(window, "EventSource", {
+      configurable: true,
+      value: MockEventSource,
+    });
+
+    const testWindow = window as Window & {
+      __emitChatReactionEvent?: (payload: unknown) => void;
+    };
+    testWindow.__emitChatReactionEvent = (payload) => {
+      for (const source of sources) {
+        source.dispatchEvent(
+          new MessageEvent("message.reactions.updated", {
+            data: JSON.stringify(payload),
+          }),
+        );
+      }
+    };
+  });
+}
 
 async function mockAuthenticatedChat(
   page: Page,
@@ -1553,6 +1856,119 @@ async function mockAuthenticatedChat(
         data: {
           conversation,
           messages,
+        },
+      }),
+    });
+  });
+
+  await page.route("**/api/chat/messages/*/reactions**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const messageId = Number(
+      path.match(/\/chat\/messages\/(\d+)\/reactions/u)?.[1] ?? 0,
+    );
+    let targetMessage: Record<string, unknown> | undefined;
+
+    for (const storedMessages of messageStore.values()) {
+      targetMessage = storedMessages.find((message) => message.id === messageId);
+
+      if (targetMessage) {
+        break;
+      }
+    }
+
+    if (!targetMessage) {
+      await route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, error: "Message not found." }),
+      });
+      return;
+    }
+
+    const currentReactions = Array.isArray(targetMessage.reactions)
+      ? targetMessage.reactions.filter(plainRecord)
+      : [];
+    const reactionVersion = Number(targetMessage.reactionVersion ?? 0);
+
+    if (request.method() === "GET" && path.endsWith("/details")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            messageId,
+            conversationId: Number(targetMessage.conversationId),
+            reactionVersion,
+            reactions: currentReactions.map((reaction) => ({
+              emoji: reaction.emoji,
+              count: reaction.count,
+              reactedByMe: reaction.reactedByMe === true,
+              users: reaction.reactedByMe === true
+                ? [currentUser]
+                : [mockConversation.otherParticipant],
+            })),
+            truncated: false,
+          },
+        }),
+      });
+      return;
+    }
+
+    if (request.method() !== "POST" && request.method() !== "DELETE") {
+      await route.fallback();
+      return;
+    }
+
+    const body = request.postDataJSON() as { emoji?: unknown };
+    const emoji = typeof body.emoji === "string" ? body.emoji : "";
+    const existing = currentReactions.find((reaction) => reaction.emoji === emoji);
+    const adding = request.method() === "POST";
+    let changed = false;
+    let nextReactions = currentReactions;
+
+    if (adding && existing?.reactedByMe !== true) {
+      changed = true;
+      nextReactions = existing
+        ? currentReactions.map((reaction) =>
+            reaction === existing
+              ? {
+                  ...reaction,
+                  count: Number(reaction.count ?? 0) + 1,
+                  reactedByMe: true,
+                }
+              : reaction,
+          )
+        : [...currentReactions, { emoji, count: 1, reactedByMe: true }];
+    } else if (!adding && existing?.reactedByMe === true) {
+      changed = true;
+      const nextCount = Math.max(0, Number(existing.count ?? 0) - 1);
+      nextReactions = nextCount === 0
+        ? currentReactions.filter((reaction) => reaction !== existing)
+        : currentReactions.map((reaction) =>
+            reaction === existing
+              ? { ...reaction, count: nextCount, reactedByMe: false }
+              : reaction,
+          );
+    }
+
+    const nextVersion = reactionVersion + (changed ? 1 : 0);
+    targetMessage.reactions = nextReactions;
+    targetMessage.reactionVersion = nextVersion;
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          messageId,
+          conversationId: Number(targetMessage.conversationId),
+          changed,
+          reactionVersion: nextVersion,
+          reaction: { emoji, reacted: adding },
+          reactions: nextReactions,
         },
       }),
     });

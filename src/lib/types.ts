@@ -644,9 +644,61 @@ export type ChatMessage = {
   body: string;
   bodyEntities?: RichTextEntity[];
   attachments?: ChatMessageAttachment[];
+  reactions: ChatMessageReactionSummary[];
+  reactionVersion: number;
   deletedAt: string | null;
   createdAt: string;
   sender: User;
+};
+
+export type ChatMessageReactionSummary = {
+  emoji: string;
+  count: number;
+  reactedByMe: boolean;
+};
+
+export type ChatMessageReactionCount = Pick<
+  ChatMessageReactionSummary,
+  "emoji" | "count"
+>;
+
+export type ChatMessageReactionMutationResult = {
+  messageId: number;
+  conversationId: number;
+  changed: boolean;
+  reactionVersion: number;
+  reaction: {
+    emoji: string;
+    reacted: boolean;
+  };
+  reactions: ChatMessageReactionSummary[];
+};
+
+export type ChatMessageReactionDetailsGroup = {
+  emoji: string;
+  count: number;
+  users: User[];
+  reactedByMe?: boolean;
+};
+
+export type ChatMessageReactionDetails = {
+  messageId: number;
+  conversationId: number;
+  reactionVersion: number;
+  truncated: boolean;
+  groups: ChatMessageReactionDetailsGroup[];
+};
+
+export type ChatMessageReactionEvent = {
+  schemaVersion: 1;
+  type: "message.reactions.updated";
+  conversationId: number;
+  messageId: number;
+  reactionVersion: number;
+  actorUserId: number;
+  emoji: string;
+  reacted: boolean;
+  reactions: ChatMessageReactionCount[];
 };
 
 export type ChatLastMessage = Pick<ChatMessage, "id" | "body" | "createdAt" | "sender"> & {

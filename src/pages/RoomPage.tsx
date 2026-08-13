@@ -30,25 +30,27 @@ import {
 } from "react";
 import { useNavigate, useOutletContext, useParams, useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
+import { ChatMessageBubble } from "../components/chat/ChatMessageBubble";
+import { chatMessagesRenderEqual } from "../components/chat/messageReactionState";
 import { MessageAttachmentComposer } from "../components/chat/MessageAttachmentComposer";
 import {
   messageAttachmentInputsFromDrafts,
   messageHasContent,
 } from "../components/chat/messageAttachmentState";
-import { MessageAttachments } from "../components/chat/MessageAttachments";
-import { messageTextForDisplay } from "../components/chat/messageAttachmentDisplay";
+import {
+  useChatReactionEvents,
+  useMessageReactions,
+} from "../components/chat/useMessageReactions";
 import { MentionTextarea } from "../components/social/MentionTextarea";
 import { PostCard } from "../components/social/PostCard";
 import { ReportForm } from "../components/social/ReportForm";
 import { RoomRulesModal } from "../components/social/RoomRulesModal";
 import { RoomShareModal } from "../components/social/RoomShareModal";
-import { RichText } from "../components/social/RichText";
 import {
   InlineUserProfileLink,
   UserIdentityLink,
 } from "../components/social/UserProfileLink";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
-import { Avatar } from "../components/ui/Avatar";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
@@ -81,7 +83,7 @@ import { ApiClientError } from "../lib/apiClient";
 import { cn } from "../lib/classNames";
 import { postCreatedEventName } from "../lib/postEvents";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
-import { formatRelativeTime, parseApiTimestamp } from "../lib/dates";
+import { parseApiTimestamp } from "../lib/dates";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import type { PostMediaDraft } from "../lib/postMedia";
 import { formatCountWithUnit } from "../lib/pluralize";
@@ -864,6 +866,10 @@ function RoomChannelWorkspace({
   const requestedChannelSlugRef = useRef<string | undefined>(undefined);
   const runWithAuthRef = useRef(runWithAuth);
   const selectedChannelSlugRef = useRef<string | undefined>(undefined);
+  const reconcileReactionMessageRef = useRef(
+    (current: ChatMessage, incoming: ChatMessage) =>
+      incoming.reactionVersion >= current.reactionVersion ? incoming : current,
+  );
   const requestedChannelSlug = sanitizeChannelSlug(searchParams.get("channel"));
   const [mobileChannelPaneOpen, setMobileChannelPaneOpen] = useState(
     Boolean(requestedChannelSlug),
@@ -1024,7 +1030,12 @@ function RoomChannelWorkspace({
         }
 
         setMessages((current) => {
+          const mutationOccurredDuringRequest =
+            messageMutationVersionRef.current !== mutationVersionAtStart;
           const serverMessageIds = new Set(result.messages.map((message) => message.id));
+          const currentMessagesById = new Map(
+            current.map((message) => [message.id, message]),
+          );
           const optimisticMessages = current.filter(
             (message) =>
               message.id < 0 &&
@@ -1053,11 +1064,19 @@ function RoomChannelWorkspace({
             }
           }
 
-          const serverMessages = result.messages.filter(
-            (serverMessage) => !optimisticServerMessageIds.has(serverMessage.id),
-          );
+          const serverMessages = result.messages
+            .filter(
+              (serverMessage) => !optimisticServerMessageIds.has(serverMessage.id),
+            )
+            .map((serverMessage) =>
+              reconcileRoomMessageReactionSnapshot(
+                serverMessage,
+                currentMessagesById.get(serverMessage.id),
+                reconcileReactionMessageRef.current,
+              ),
+            );
           const confirmedDuringRequest =
-            messageMutationVersionRef.current !== mutationVersionAtStart
+            mutationOccurredDuringRequest
               ? current.filter(
                   (message) =>
                     message.id > 0 &&
@@ -1126,6 +1145,66 @@ function RoomChannelWorkspace({
     },
     [room.slug, status],
   );
+
+  const refetchRoomReactionMessage = useCallback(
+    async (messageId: number) => {
+      const channelSlug = selectedChannelSlugRef.current;
+
+      if (status !== "authenticated" || !channelSlug) {
+        return null;
+      }
+
+      const result = await getRoomChannelMessages(room.slug, channelSlug);
+
+      if (selectedChannelSlugRef.current !== channelSlug) {
+        return null;
+      }
+
+      return result.messages.find((message) => message.id === messageId) ?? null;
+    },
+    [room.slug, status],
+  );
+  const {
+    applyReactionEventToMessages,
+    errorByMessage: reactionErrorByMessage,
+    pendingByMessage: pendingReactionsByMessage,
+    reconcileReactionMessage,
+    toggleReaction,
+  } = useMessageReactions({
+    setMessages,
+    onRefetchMessage: refetchRoomReactionMessage,
+  });
+  useEffect(() => {
+    reconcileReactionMessageRef.current = reconcileReactionMessage;
+  }, [reconcileReactionMessage]);
+  const handleToggleReaction = useCallback(
+    (message: ChatMessage, emoji: string) => {
+      messageMutationVersionRef.current += 1;
+      void toggleReaction(message, emoji);
+    },
+    [toggleReaction],
+  );
+  const handleReactionEvent = useCallback(
+    (event: Parameters<typeof applyReactionEventToMessages>[1]) => {
+      messageMutationVersionRef.current += 1;
+      setMessages((current) => applyReactionEventToMessages(current, event));
+    },
+    [applyReactionEventToMessages],
+  );
+  const handleReactionStreamReconnect = useCallback(() => {
+    void loadMessages(false);
+  }, [loadMessages]);
+
+  useChatReactionEvents({
+    active:
+      active &&
+      status === "authenticated" &&
+      messagesReady &&
+      activeChannel?.conversationId !== undefined,
+    conversationId: activeChannel?.conversationId,
+    onConnected: handleReactionStreamReconnect,
+    onEvent: handleReactionEvent,
+  });
 
   useEffect(() => {
     let active = true;
@@ -1608,14 +1687,24 @@ function RoomChannelWorkspace({
                 title={activeChannel.readOnly ? "No announcements yet" : "No messages yet"}
               />
             ) : null}
-            {messages.map((message) => (
-              <RoomChatMessageBubble
-                key={message.id}
-                canReport={message.sender.id !== user?.id}
-                message={message}
-                mine={message.sender.id === user?.id}
-              />
-            ))}
+            {messages.map((message) => {
+              const pendingEmojis = pendingReactionsByMessage.get(message.id);
+              const reactionError = reactionErrorByMessage.get(message.id);
+
+              return (
+                <ChatMessageBubble
+                  key={message.id}
+                  canReact={status === "authenticated" && messagesReady}
+                  canReport={message.sender.id !== user?.id}
+                  message={message}
+                  mine={message.sender.id === user?.id}
+                  onToggleReaction={handleToggleReaction}
+                  variant="room"
+                  {...(pendingEmojis ? { pendingEmojis } : {})}
+                  {...(reactionError ? { error: reactionError } : {})}
+                />
+              );
+            })}
           </div>
 
           <form
@@ -1721,135 +1810,6 @@ function RoomChannelButton({
         </span>
       ) : null}
     </button>
-  );
-}
-
-function RoomChatMessageBubble({
-  canReport,
-  message,
-  mine,
-}: {
-  canReport: boolean;
-  message: ChatMessage;
-  mine: boolean;
-}) {
-  const display = messageTextForDisplay(message);
-  const hasBody = display.body.trim() !== "";
-  const hasAttachments = Boolean(message.attachments?.length);
-
-  return (
-    <div
-      className={cn(
-        "group/message flex items-end gap-2",
-        mine ? "justify-end" : "justify-start",
-      )}
-    >
-      {mine ? null : (
-        <Avatar user={message.sender} size="sm" className="mb-1 hidden sm:block" />
-      )}
-      <div
-        className={cn(
-          "mb-1 flex min-w-0 w-full max-w-[min(42rem,94%)] flex-col sm:max-w-[min(44rem,86%)]",
-          mine ? "items-end" : "items-start",
-        )}
-      >
-        {!mine ? (
-          <span className="mb-1 block truncate px-1 text-[0.7rem] font-semibold text-muted">
-            {message.sender.displayName}
-          </span>
-        ) : null}
-        {hasBody ? (
-          <div
-            className={cn(
-              "w-fit max-w-[min(31rem,100%)] rounded-[1.125rem] px-3 py-2 text-sm leading-5 transition duration-fluid ease-fluid sm:max-w-[min(36rem,100%)]",
-              mine
-                ? "ml-auto bg-accent text-accent-ink shadow-soft"
-                : "bg-surface-strong text-text",
-            )}
-          >
-            <RichText
-              text={display.body}
-              entities={display.bodyEntities}
-              className="block whitespace-pre-wrap break-words"
-              embedClassName="mt-2"
-            />
-            {!hasAttachments ? (
-              <RoomMessageMeta
-                canReport={canReport}
-                message={message}
-                mine={mine}
-              />
-            ) : null}
-          </div>
-        ) : null}
-
-        {hasAttachments ? (
-          <MessageAttachments
-            attachments={message.attachments}
-            className={cn("mt-1.5", mine && "ml-auto")}
-            testId="room-message-attachments"
-          />
-        ) : null}
-
-        {hasAttachments ? (
-          <RoomMessageMeta
-            canReport={canReport}
-            message={message}
-            mine={mine}
-            outside
-            className={cn("mt-1 px-1", mine && "justify-end")}
-          />
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function RoomMessageMeta({
-  canReport,
-  className,
-  message,
-  mine,
-  outside = false,
-}: {
-  canReport: boolean;
-  className?: string;
-  message: ChatMessage;
-  mine: boolean;
-  outside?: boolean;
-}) {
-  const usesBubbleTone = mine && !outside;
-
-  return (
-    <div
-      className={cn(
-        "mt-1.5 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
-        usesBubbleTone ? "text-accent-ink/70" : "text-muted",
-        className,
-      )}
-    >
-      <span>{formatActivityTime(message.createdAt)}</span>
-      {canReport && message.deletedAt === null ? (
-        <>
-          <span className="text-current/45" aria-hidden="true">
-            •
-          </span>
-          <ReportForm
-            className="contents"
-            targetType="message"
-            targetId={message.id}
-            reportedUserId={message.sender.id}
-            title="Report message"
-            triggerMode="icon"
-            triggerLabel="Report message"
-            triggerSize="compact"
-            triggerIconSize={12}
-            triggerClassName="!bg-transparent !text-current hover:!bg-transparent focus-visible:!bg-transparent"
-            feedbackClassName="basis-full"
-          />
-        </>
-      ) : null}
-    </div>
   );
 }
 
@@ -2244,6 +2204,21 @@ function sanitizeChannelSlug(value: string | null): string | undefined {
   return /^[a-z0-9-]{1,48}$/u.test(normalized) ? normalized : undefined;
 }
 
+function reconcileRoomMessageReactionSnapshot(
+  serverMessage: ChatMessage,
+  currentMessage: ChatMessage | undefined,
+  reconcile: (current: ChatMessage, incoming: ChatMessage) => ChatMessage,
+): ChatMessage {
+  if (!currentMessage) {
+    return serverMessage;
+  }
+
+  const reconciled = reconcile(currentMessage, serverMessage);
+  return chatMessagesRenderEqual(currentMessage, reconciled)
+    ? currentMessage
+    : reconciled;
+}
+
 function roomChatMessageMatchesOptimistic(
   optimisticMessage: ChatMessage,
   serverMessage: ChatMessage,
@@ -2287,10 +2262,6 @@ function roomChatAttachmentFingerprint(message: ChatMessage): string {
       return `media:${attachment.media.kind}:${attachment.media.resourceKey ?? attachment.media.url ?? attachment.media.position}`;
     })
     .join("|");
-}
-
-function formatActivityTime(value: string): string {
-  return formatRelativeTime(value).replace(/^now$/, "active now");
 }
 
 function roleLabel(role: "owner" | "moderator" | "member"): string {

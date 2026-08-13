@@ -184,6 +184,14 @@ a[href] {
   .app-control.rounded-full:has(> svg:only-child) {
     min-inline-size: 2.8125rem;
   }
+
+  .message-actions-desktop {
+    display: none !important;
+  }
+
+  .message-actions-touch {
+    display: inline-flex !important;
+  }
 }
 
 ::selection {

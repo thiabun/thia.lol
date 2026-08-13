@@ -22,16 +22,18 @@ import {
 import { Link, useOutletContext, useSearchParams } from "react-router";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
+import { ChatMessageBubble } from "../components/chat/ChatMessageBubble";
+import { chatMessagesRenderEqual } from "../components/chat/messageReactionState";
 import { MessageAttachmentComposer } from "../components/chat/MessageAttachmentComposer";
 import {
   messageAttachmentInputsFromDrafts,
   messageHasContent,
 } from "../components/chat/messageAttachmentState";
-import { MessageAttachments } from "../components/chat/MessageAttachments";
-import { messageTextForDisplay } from "../components/chat/messageAttachmentDisplay";
+import {
+  useChatReactionEvents,
+  useMessageReactions,
+} from "../components/chat/useMessageReactions";
 import { MentionTextarea } from "../components/social/MentionTextarea";
-import { ReportForm } from "../components/social/ReportForm";
-import { RichText } from "../components/social/RichText";
 import { Avatar } from "../components/ui/Avatar";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { ModalSheet } from "../components/ui/ModalSheet";
@@ -94,6 +96,64 @@ export function ChatPage() {
   const selectedConversationIdRef = useRef<number | undefined>(undefined);
   const messageListRef = useRef<HTMLDivElement>(null);
 
+  const fetchActiveConversationMessages = useCallback(async () => {
+    const conversationId = selectedConversationIdRef.current;
+
+    if (status !== "authenticated" || !conversationId) {
+      return null;
+    }
+
+    const result = await getChatMessages(conversationId);
+
+    return selectedConversationIdRef.current === conversationId
+      ? result.messages
+      : null;
+  }, [status]);
+  const refetchReactionMessage = useCallback(
+    async (messageId: number) => {
+      const nextMessages = await fetchActiveConversationMessages();
+      return nextMessages?.find((message) => message.id === messageId) ?? null;
+    },
+    [fetchActiveConversationMessages],
+  );
+  const {
+    applyReactionEventToMessages,
+    errorByMessage: reactionErrorByMessage,
+    pendingByMessage: pendingReactionsByMessage,
+    reconcileReactionMessage,
+    toggleReaction,
+  } = useMessageReactions({
+    setMessages,
+    onRefetchMessage: refetchReactionMessage,
+  });
+  const handleToggleReaction = useCallback(
+    (message: ChatMessage, emoji: string) => {
+      void toggleReaction(message, emoji);
+    },
+    [toggleReaction],
+  );
+  const handleReactionEvent = useCallback(
+    (event: Parameters<typeof applyReactionEventToMessages>[1]) => {
+      setMessages((current) => applyReactionEventToMessages(current, event));
+    },
+    [applyReactionEventToMessages],
+  );
+  const refreshDirectMessageReactions = useCallback(() => {
+    void fetchActiveConversationMessages()
+      .then((nextMessages) => {
+        if (nextMessages) {
+          setMessages((current) =>
+            reconcileMessageReactionSnapshots(
+              current,
+              nextMessages,
+              reconcileReactionMessage,
+            ),
+          );
+        }
+      })
+      .catch(() => undefined);
+  }, [fetchActiveConversationMessages, reconcileReactionMessage]);
+
   const requestedConversationId = useMemo(() => {
     const value = searchParams.get("conversation");
 
@@ -113,6 +173,17 @@ export function ChatPage() {
     (conversation) => conversation.id === activeConversationId,
   );
   const mobileConversationOpen = Boolean(activeConversationId);
+
+  useChatReactionEvents({
+    active:
+      status === "authenticated" &&
+      activeConversationId !== undefined &&
+      messagesConversationId === activeConversationId,
+    conversationId: activeConversationId,
+    onConnected: refreshDirectMessageReactions,
+    onEvent: handleReactionEvent,
+  });
+
   const filteredMoots = useMemo(() => {
     const query = mootQuery.trim().toLowerCase();
 
@@ -799,14 +870,24 @@ export function ChatPage() {
                       title="No messages yet"
                     />
                   ) : null}
-                  {visibleMessages.map((message) => (
-                    <MessageBubble
-                      key={message.id}
-                      message={message}
-                      mine={message.sender.id === user?.id}
-                      canReport={message.sender.id !== user?.id}
-                    />
-                  ))}
+                  {visibleMessages.map((message) => {
+                    const pendingEmojis = pendingReactionsByMessage.get(message.id);
+                    const reactionError = reactionErrorByMessage.get(message.id);
+
+                    return (
+                      <ChatMessageBubble
+                        key={message.id}
+                        canReact={status === "authenticated"}
+                        canReport={message.sender.id !== user?.id}
+                        message={message}
+                        mine={message.sender.id === user?.id}
+                        onToggleReaction={handleToggleReaction}
+                        variant="direct"
+                        {...(pendingEmojis ? { pendingEmojis } : {})}
+                        {...(reactionError ? { error: reactionError } : {})}
+                      />
+                    );
+                  })}
                 </div>
 
                 <form
@@ -1180,159 +1261,6 @@ function ConversationButton({
   );
 }
 
-type MessageBubbleProps = {
-  canReport: boolean;
-  message: ChatMessage;
-  mine: boolean;
-};
-
-function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
-  const display = messageTextForDisplay(message);
-  const hasBody = display.body.trim() !== "";
-  const hasAttachments = Boolean(message.attachments?.length);
-
-  return (
-    <div
-      className={cn(
-        "group/message flex items-end gap-2",
-        mine ? "justify-end" : "justify-start",
-      )}
-    >
-      {mine ? null : (
-        <Avatar user={message.sender} size="sm" className="mb-1 hidden sm:block" />
-      )}
-      <div
-        className={cn(
-          "mb-1 flex min-w-0 w-full max-w-[min(42rem,94%)] flex-col sm:max-w-[min(44rem,86%)]",
-          mine ? "items-end" : "items-start",
-        )}
-      >
-        {hasBody ? (
-          <div
-            className={cn(
-              "relative w-fit max-w-[min(30rem,100%)] sm:max-w-[min(34rem,100%)]",
-              mine && "ml-auto",
-            )}
-          >
-            <MessageBubbleTail mine={mine} />
-            <div
-              className={cn(
-                "relative z-10 rounded-[1.125rem] px-3 py-2 text-sm leading-5 transition duration-fluid ease-fluid",
-                mine
-                  ? "bg-accent text-accent-ink shadow-soft"
-                  : "bg-surface-strong text-text",
-              )}
-            >
-              <RichText
-                text={display.body}
-                entities={display.bodyEntities}
-                className="block whitespace-pre-wrap break-words"
-                embedClassName="mt-2"
-              />
-              {!hasAttachments ? (
-                <MessageMeta canReport={canReport} message={message} mine={mine} />
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-
-        {hasAttachments ? (
-          <MessageAttachments
-            attachments={message.attachments}
-            className={cn("mt-1.5", mine && "ml-auto")}
-            testId="chat-message-attachments"
-          />
-        ) : null}
-
-        {hasAttachments ? (
-          <MessageMeta
-            canReport={canReport}
-            message={message}
-            mine={mine}
-            outside
-            className={cn("mt-1 px-1", mine && "justify-end")}
-          />
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function MessageMeta({
-  canReport,
-  className,
-  message,
-  mine,
-  outside = false,
-}: {
-  canReport: boolean;
-  className?: string;
-  message: ChatMessage;
-  mine: boolean;
-  outside?: boolean;
-}) {
-  const usesBubbleTone = mine && !outside;
-
-  return (
-    <div
-      className={cn(
-        "mt-1.5 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
-        usesBubbleTone ? "text-accent-ink/70" : "text-muted",
-        className,
-      )}
-    >
-      <span>{formatChatTime(message.createdAt)}</span>
-      {canReport && message.deletedAt === null ? (
-        <>
-          <span className="text-current/45" aria-hidden="true">
-            •
-          </span>
-          <ReportForm
-            className="contents"
-            targetType="message"
-            targetId={message.id}
-            reportedUserId={message.sender.id}
-            title="Report message"
-            triggerMode="icon"
-            triggerLabel="Report message"
-            triggerSize="compact"
-            triggerIconSize={12}
-            triggerClassName={cn(
-              "-my-1 size-7 border border-transparent !bg-transparent !opacity-100 transition duration-fluid ease-fluid hover:!bg-transparent focus-visible:!bg-transparent focus-visible:!outline-none motion-reduce:transition-none",
-              usesBubbleTone
-                ? "!text-accent-ink/70 hover:!text-accent-ink focus-visible:!text-accent-ink hover:[&>span]:bg-accent-ink/10 focus-visible:[&>span]:bg-accent-ink/12 focus-visible:[&>span]:ring-1 focus-visible:[&>span]:ring-accent-ink/25"
-                : "!text-text/55 group-hover/message:!text-text/70 hover:!text-text/85 focus-visible:!text-text hover:[&>span]:bg-text/8 focus-visible:[&>span]:bg-text/10 focus-visible:[&>span]:ring-1 focus-visible:[&>span]:ring-focus/45",
-            )}
-            feedbackClassName="basis-full"
-          />
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-function MessageBubbleTail({ mine }: { mine: boolean }) {
-  const path =
-    "M25.5 0.8H12.8C12.4 6.3 8.5 11.9 1.4 15.2C10.8 15.5 19.2 10.8 25.5 4.2Z";
-
-  return (
-    <svg
-      aria-hidden="true"
-      className={cn(
-        "pointer-events-none absolute bottom-1 z-0 h-4 w-6",
-        mine ? "-right-2 -scale-x-100" : "-left-2",
-      )}
-      focusable="false"
-      viewBox="0 0 26 16"
-    >
-      <path
-        className={mine ? "fill-accent" : "fill-surface-strong"}
-        d={path}
-      />
-    </svg>
-  );
-}
-
 function upsertConversation(
   conversations: ChatConversation[],
   conversation: ChatConversation,
@@ -1374,6 +1302,33 @@ function formatChatTime(value: string): string {
     hour: "numeric",
     minute: "2-digit",
   }).format(parsed);
+}
+
+function reconcileMessageReactionSnapshots(
+  current: ChatMessage[],
+  incoming: ChatMessage[],
+  reconcile: (current: ChatMessage, incoming: ChatMessage) => ChatMessage,
+): ChatMessage[] {
+  const incomingById = new Map(incoming.map((message) => [message.id, message]));
+  let changed = false;
+  const next = current.map((message) => {
+    const fresh = incomingById.get(message.id);
+
+    if (!fresh) {
+      return message;
+    }
+
+    const reconciled = reconcile(message, fresh);
+
+    if (chatMessagesRenderEqual(message, reconciled)) {
+      return message;
+    }
+
+    changed = true;
+    return reconciled;
+  });
+
+  return changed ? next : current;
 }
 
 function messagePreviewText(message: ChatMessage): string {

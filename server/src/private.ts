@@ -204,6 +204,7 @@ export interface AccountDataExportPayload {
   };
   messages: {
     sentMessages: Record<string, unknown>[];
+    reactions: Record<string, unknown>[];
   };
   moderation: {
     submittedReports: Record<string, unknown>[];
@@ -826,6 +827,7 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
       followRequestsSentRows,
       followRequestsReceivedRows,
       sentMessageRows,
+      messageReactionRows,
       submittedReportRows,
       accountReportRows,
       integrationRows,
@@ -1007,6 +1009,15 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
         [session.userId],
       ),
       this.exportTableRows(
+        "message_reactions",
+        `SELECT message_id, emoji, created_at
+         FROM message_reactions
+         WHERE user_id = ?
+         ORDER BY created_at DESC
+         LIMIT ${accountDataExportLimit}`,
+        [session.userId],
+      ),
+      this.exportTableRows(
         "reports",
         `SELECT id, target_type, target_id, reported_user_id, post_id, category,
                 details, status, reviewed_at, action_taken, created_at, updated_at
@@ -1083,6 +1094,7 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
       },
       messages: {
         sentMessages: sentMessageRows,
+        reactions: messageReactionRows,
       },
       moderation: {
         submittedReports: submittedReportRows,
